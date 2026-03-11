@@ -7,9 +7,9 @@ const isProd = process.env.NODE_ENV === 'production';
 
 const nextConfig: NextConfig = {
   output: "export",
-  // If you deploy to a custom domain, keep this as empty string.
-  // If you deploy to [username].github.io/[repo-name], set [repo-name] as basePath.
-  basePath: isProd ? "" : "",
+  // GitHub Pages usually deploys to a sub-path /sticker-remove-bg/
+  // This environment variable is injected by our deploy.yml workflow
+  basePath: process.env.GITHUB_PAGES_BASE_PATH || "",
   images: {
     unoptimized: true,
   },

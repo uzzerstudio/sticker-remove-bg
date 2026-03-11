@@ -1,0 +1,66 @@
+{
+  "app": {
+    "name": "Sticker Generator",
+    "tagline": "Create amazing stickers in seconds",
+    "description": "The best tool for creating professional stickers"
+  },
+  "header": {
+    "home": "Home",
+    "about": "About",
+    "language": "Language",
+    "theme": "Theme",
+    "lightMode": "Light mode",
+    "darkMode": "Dark mode",
+    "spanish": "Spanish",
+    "english": "English"
+  },
+  "upload": {
+    "title": "Upload your image",
+    "subtitle": "Tap to select",
+    "formats": "PNG, JPG, WebP, GIF",
+    "maxSize": "Max 10MB",
+    "dragHere": "Drop here",
+    "processing": "Processing...",
+    "removeBackground": "Remove background",
+    "uploadNew": "Change image"
+  },
+  "editor": {
+    "title": "Editor",
+    "outline": "Outline",
+    "outlineWidth": "Width",
+    "outlineColor": "Color",
+    "canvas": "Canvas",
+    "padding": "Padding",
+    "autoCrop": "Auto-crop",
+    "manualFill": "Fill hole (bucket)",
+    "clearFills": "Clear fills",
+    "resetCanvas": "Reset",
+    "zoom": "Zoom",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fitToScreen": "Fit"
+  },
+  "export": {
+    "title": "Export",
+    "format": "Format",
+    "quality": "Quality",
+    "highQuality": "High quality (HD)",
+    "download": "Download",
+    "downloading": "Downloading...",
+    "png": "PNG",
+    "webp": "WebP",
+    "success": "Sticker exported!",
+    "error": "Export error"
+  },
+  "footer": {
+    "madeWith": "Made with",
+    "rights": "All rights reserved",
+    "version": "Version"
+  },
+  "errors": {
+    "fileTooBig": "File too large. Max 10MB.",
+    "invalidFormat": "Invalid format. Use PNG, JPG, WebP or GIF.",
+    "processingFailed": "Processing error",
+    "noImage": "No image"
+  }
+}

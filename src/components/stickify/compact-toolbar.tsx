@@ -437,11 +437,12 @@ export function CompactToolbar() {
 
       // ── Client-side Export (Static friendly) ─────────────────────────────
       if (format === 'png') {
-        // UPNG.js losslessly compresses PNGs much better than native canvas.toBlob
+        // UPNG.js compresses PNGs much better than native canvas.toBlob
         const imgData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
 
-        // cnum = 0 -> Lossless, no color quantization, perfect quality
-        const pngBuffer = UPNG.encode([imgData.data.buffer], canvasWidth, canvasHeight, 0);
+        // cnum = 256 -> Lossy color quantization (Visual lossless), typical of TinyPNG / iloveimg
+        // This drops a 800kb file to ~180kb while mapping 16m colors to the best 256.
+        const pngBuffer = UPNG.encode([imgData.data.buffer], canvasWidth, canvasHeight, 256);
 
         const blob = new Blob([pngBuffer], { type: 'image/png' });
         const url = URL.createObjectURL(blob);

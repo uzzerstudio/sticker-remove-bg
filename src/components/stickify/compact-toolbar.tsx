@@ -184,7 +184,12 @@ function createOutline(
   // ── Step 4: feColorMatrix(20 -10) equivalent ─────────────────────────────
   // new_alpha = clamp(20 × blur_norm − 10, 0, 1) × 255
   // Matches SVG second feColorMatrix: tight outline + only ~1-2px smooth edge
-  const outlineData = ctx.createImageData(w, h);
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = w;
+  outCanvas.height = h;
+  const outCtx = outCanvas.getContext('2d')!;
+  const outlineData = outCtx.createImageData(w, h);
+
   for (let i = 0; i < blurred.length; i++) {
     const a = Math.round(Math.min(1, Math.max(0, 20 * (blurred[i] / 255) - 10)) * 255);
     if (a > 0) {
@@ -196,7 +201,8 @@ function createOutline(
       outlineData.data[px + 3] = a;
     }
   }
-  ctx.putImageData(outlineData, 0, 0);
+  outCtx.putImageData(outlineData, 0, 0);
+  ctx.drawImage(outCanvas, 0, 0);
 }
 
 

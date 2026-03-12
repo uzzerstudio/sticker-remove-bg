@@ -116,7 +116,12 @@ function createOutline(
   blurred = boxBlur(blurred);
 
   // 4. Smooth Edge Formula (Matches SVG 20 -10)
-  const outlineData = ctx.createImageData(w, h);
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = w;
+  outCanvas.height = h;
+  const outCtx = outCanvas.getContext('2d')!;
+  const outlineData = outCtx.createImageData(w, h);
+
   for (let i = 0; i < blurred.length; i++) {
     const a = Math.round(Math.min(1, Math.max(0, 20 * (blurred[i] / 255) - 10)) * 255);
     if (a > 0) {
@@ -127,7 +132,8 @@ function createOutline(
       outlineData.data[px + 3] = a;
     }
   }
-  ctx.putImageData(outlineData, 0, 0);
+  outCtx.putImageData(outlineData, 0, 0);
+  ctx.drawImage(outCanvas, 0, 0);
 }
 
 export function StickerCanvas({ className }: StickerCanvasProps) {
@@ -437,6 +443,25 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       x: Math.max(0, Math.min(canvas.width, x)),
       y: Math.max(0, Math.min(canvas.height, y))
     };
+  }, []);
+
+  // Zoom on Ctrl+MouseWheel
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const state = useStickerStore.getState();
+        const currentZoom = state.zoom;
+        const delta = e.deltaY < 0 ? 0.1 : -0.1;
+        state.setZoom(Math.max(0.1, Math.min(5, currentZoom + delta)));
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {

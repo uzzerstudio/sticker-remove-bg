@@ -36,6 +36,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { type Locale } from '@/i18n/config';
+import UPNG from 'upng-js';
 
 // Import Transformers.js for browser AI
 const getTransformers = async () => {
@@ -429,26 +430,49 @@ export function CompactToolbar() {
 
 
       // ── Client-side Export (Static friendly) ─────────────────────────────
-      const mimeType = format === 'png' ? 'image/png' : 'image/webp';
-      const qualityValue = quality === 'high' ? 1.0 : quality === 'medium' ? 0.8 : 0.6;
+      if (format === 'png') {
+        // UPNG.js losslessly compresses PNGs much better than native canvas.toBlob
+        const imgData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
 
-      canvas.toBlob((blob) => {
-        if (!blob) throw new Error('Failed to create blob');
+        // cnum = 0 -> Lossless, no color quantization, perfect quality
+        const pngBuffer = UPNG.encode([imgData.data.buffer], canvasWidth, canvasHeight, 0);
 
+        const blob = new Blob([pngBuffer], { type: 'image/png' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `sticker-${Date.now()}.${format}`;
+        link.download = `sticker-${Date.now()}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
 
         toast({
-          title: `✓ Exportado como ${format.toUpperCase()}`,
-          description: `Calidad: ${quality === 'high' ? 'Máxima' : quality === 'medium' ? 'Media' : 'Baja'}`,
+          title: `✓ Exportado como PNG`,
+          description: `El archivo ha sido optimizado con máxima calidad.`,
         });
-      }, mimeType, qualityValue);
+      } else {
+        const mimeType = 'image/webp';
+        const qualityValue = quality === 'high' ? 1.0 : quality === 'medium' ? 0.8 : 0.6;
+
+        canvas.toBlob((blob) => {
+          if (!blob) throw new Error('Failed to create blob');
+
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `sticker-${Date.now()}.webp`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          toast({
+            title: `✓ Exportado como WEBP`,
+            description: `Calidad: ${quality === 'high' ? 'Máxima' : quality === 'medium' ? 'Media' : 'Baja'}`,
+          });
+        }, mimeType, qualityValue);
+      }
 
     } catch (error) {
       console.error('Export error:', error);

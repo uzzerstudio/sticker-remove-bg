@@ -24,7 +24,7 @@ export interface StickerState {
   transparencyMask: string | null;
   transparencyHistory: (string | null)[];
   transparencyIndex: number;
-  activeTool: 'none' | 'fill' | 'erase' | 'brush_erase';
+  activeTool: 'none' | 'fill' | 'erase' | 'brush_erase' | 'adjust_margin';
   brushSize: number;
 }
 
@@ -47,7 +47,7 @@ export interface StickerStore extends StickerState {
   redo: () => void;
   undoErase: () => void;
   redoErase: () => void;
-  setActiveTool: (tool: 'none' | 'fill' | 'erase' | 'brush_erase') => void;
+  setActiveTool: (tool: 'none' | 'fill' | 'erase' | 'brush_erase' | 'adjust_margin') => void;
   setBrushSize: (size: number) => void;
   setTransparencyMaskOnly: (mask: string | null) => void;
   commitTransparencyHistory: () => void;

@@ -151,6 +151,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     setOutlineWidth,
     outlineColor,
     padding,
+    setPadding,
     zoom,
     setZoom,
     isProcessing,
@@ -182,6 +183,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const lastPosRef = useRef<{ x: number, y: number } | null>(null);
   const brushCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number, y: number } | null>(null);
+  const [marginDragState, setMarginDragState] = useState<{ edge: 'top' | 'right' | 'bottom' | 'left' | null; startVal: number; startPos: number }>({ edge: null, startVal: 0, startPos: 0 });
 
   // Undo/Redo shortcuts
   useEffect(() => {
@@ -226,6 +228,36 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, undoErase, redoErase, activeTool, zoom, setZoom, outlineWidth, setOutlineWidth, setActiveTool]);
+
+  // Handle Margin Dragging
+  useEffect(() => {
+    if (!marginDragState.edge) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const { edge, startVal, startPos } = marginDragState;
+      const currentPos = edge === 'left' || edge === 'right' ? e.clientX : e.clientY;
+      const diff = (currentPos - startPos) / zoom;
+
+      let newPadding = { ...padding };
+      // Move left boundary: moving right (currentPos > startPos) decreases padding.
+      if (edge === 'left') newPadding.left = Math.round(startVal - diff);
+      // Move right boundary: moving right (currentPos > startPos) increases padding.
+      if (edge === 'right') newPadding.right = Math.round(startVal + diff);
+      // Move top boundary: moving down (currentPos > startPos) decreases padding.
+      if (edge === 'top') newPadding.top = Math.round(startVal - diff);
+      // Move bottom boundary: moving down (currentPos > startPos) increases padding.
+      if (edge === 'bottom') newPadding.bottom = Math.round(startVal + diff);
+
+      setPadding(newPadding);
+    };
+    const handleMouseUp = () => setMarginDragState({ edge: null, startVal: 0, startPos: 0 });
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [marginDragState, padding, setPadding, zoom]);
 
   // Load fill mask image when it changes
   useEffect(() => {
@@ -795,6 +827,42 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               </div>
             </div>
           )}
+
+          {/* Margin draggable edges */}
+          {activeTool === 'adjust_margin' && (
+            <>
+              <div className="absolute inset-0 border border-blue-500/50 pointer-events-none" />
+              {/* TOP */}
+              <div
+                className="absolute top-0 left-0 right-0 h-4 -mt-2 cursor-ns-resize z-50 flex items-center justify-center group"
+                onMouseDown={(e) => { e.stopPropagation(); setMarginDragState({ edge: 'top', startVal: padding.top, startPos: e.clientY }); }}
+              >
+                <div className="w-12 h-1.5 bg-blue-500 rounded-full opacity-50 group-hover:opacity-100" />
+              </div>
+              {/* BOTTOM */}
+              <div
+                className="absolute bottom-0 left-0 right-0 h-4 -mb-2 cursor-ns-resize z-50 flex items-center justify-center group"
+                onMouseDown={(e) => { e.stopPropagation(); setMarginDragState({ edge: 'bottom', startVal: padding.bottom, startPos: e.clientY }); }}
+              >
+                <div className="w-12 h-1.5 bg-blue-500 rounded-full opacity-50 group-hover:opacity-100" />
+              </div>
+              {/* LEFT */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-4 -ml-2 cursor-ew-resize z-50 flex items-center justify-center group"
+                onMouseDown={(e) => { e.stopPropagation(); setMarginDragState({ edge: 'left', startVal: padding.left, startPos: e.clientX }); }}
+              >
+                <div className="w-1.5 h-12 bg-blue-500 rounded-full opacity-50 group-hover:opacity-100" />
+              </div>
+              {/* RIGHT */}
+              <div
+                className="absolute right-0 top-0 bottom-0 w-4 -mr-2 cursor-ew-resize z-50 flex items-center justify-center group"
+                onMouseDown={(e) => { e.stopPropagation(); setMarginDragState({ edge: 'right', startVal: padding.right, startPos: e.clientX }); }}
+              >
+                <div className="w-1.5 h-12 bg-blue-500 rounded-full opacity-50 group-hover:opacity-100" />
+              </div>
+            </>
+          )}
+
         </div>
       </div>
     </div>

@@ -31,6 +31,7 @@ import {
   RotateCcw,
   Plus,
   Minus,
+  Move,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -623,13 +624,24 @@ export function CompactToolbar() {
                 />
               ))}
             </div>
-            <div className="flex flex-col gap-0.5">
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => autoCrop()} title="Auto ajuste">
-                <Crop className="h-3 w-3" />
+            <div className="flex flex-col gap-0.5 ml-1 pl-1 border-l border-border/50">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("h-5 w-5", activeTool === 'adjust_margin' && "bg-blue-500/20 text-blue-500")}
+                onClick={() => setActiveTool(activeTool === 'adjust_margin' ? 'none' : 'adjust_margin')}
+                title="Ajuste interactivo"
+              >
+                <Move className="h-3 w-3" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setPadding({ top: 0, right: 0, bottom: 0, left: 0 })} title="Reset">
-                <RotateCcw className="h-3 w-3" />
-              </Button>
+              <div className="flex gap-0.5">
+                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => autoCrop()} title="Auto ajuste">
+                  <Crop className="h-3 w-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setPadding({ top: 0, right: 0, bottom: 0, left: 0 })} title="Reset">
+                  <RotateCcw className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>

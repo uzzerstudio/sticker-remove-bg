@@ -37,6 +37,12 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { type Locale } from '@/i18n/config';
 import UPNG from 'upng-js';
+import pako from 'pako';
+
+// Inject pako into window globally so UPNG.js automatically uses it for maximum DEFLATE compression
+if (typeof window !== 'undefined') {
+  (window as any).pako = pako;
+}
 
 // Import Transformers.js for browser AI
 const getTransformers = async () => {

@@ -8,6 +8,8 @@ export interface Padding {
 export interface StickerState {
   originalImage: string | null;
   processedImage: string | null;
+  processedImageHistory: (string | null)[];
+  processedImageIndex: number;
   outlineWidth: number; // in pixels
   outlineWidthCm: number; // in centimeters
   outlineColor: string;
@@ -47,6 +49,8 @@ export interface StickerStore extends StickerState {
   redo: () => void;
   undoErase: () => void;
   redoErase: () => void;
+  undoImage: () => void;
+  redoImage: () => void;
   setActiveTool: (tool: 'none' | 'fill' | 'erase' | 'brush_erase' | 'adjust_margin') => void;
   setBrushSize: (size: number) => void;
   setTransparencyMaskOnly: (mask: string | null) => void;

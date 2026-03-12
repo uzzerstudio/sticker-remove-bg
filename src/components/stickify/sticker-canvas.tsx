@@ -173,6 +173,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     redo,
     undoErase,
     redoErase,
+    undoImage,
+    redoImage,
   } = useStickerStore();
 
   const [fillMaskImg, setFillMaskImg] = useState<HTMLImageElement | null>(null);
@@ -192,16 +194,19 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
         e.preventDefault();
         if (e.shiftKey) {
           if (activeTool === 'erase' || activeTool === 'brush_erase') redoErase();
-          else redo();
+          else if (activeTool === 'fill') redo();
+          else redoImage();
         } else {
           if (activeTool === 'erase' || activeTool === 'brush_erase') undoErase();
-          else undo();
+          else if (activeTool === 'fill') undo();
+          else undoImage();
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
         e.preventDefault();
         if (activeTool === 'erase' || activeTool === 'brush_erase') redoErase();
-        else redo();
+        else if (activeTool === 'fill') redo();
+        else redoImage();
       }
       if (e.key === 'Escape') {
         setActiveTool('none');
@@ -227,7 +232,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, undoErase, redoErase, activeTool, zoom, setZoom, outlineWidth, setOutlineWidth, setActiveTool]);
+  }, [undo, redo, undoErase, redoErase, undoImage, redoImage, activeTool, zoom, setZoom, outlineWidth, setOutlineWidth, setActiveTool]);
 
   // Handle Margin Dragging
   useEffect(() => {

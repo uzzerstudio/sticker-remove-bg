@@ -7,6 +7,8 @@ const initialPadding: Padding = { top: 0, bottom: 0, left: 0, right: 0 };
 const initialState: StickerState = {
   originalImage: null,
   processedImage: null,
+  processedImageHistory: [null],
+  processedImageIndex: 0,
   outlineWidth: 0,
   outlineWidthCm: 0,
   outlineColor: '#FFFFFF', // Blanco por defecto
@@ -35,7 +37,16 @@ export const useStickerStore = create<StickerStore>((set, get) => ({
     originalImage: image,
     processedImage: null,
   }),
-  setProcessedImage: (image) => set({ processedImage: image }),
+  setProcessedImage: (image) => {
+    const { processedImageHistory, processedImageIndex } = get();
+    const newHistory = processedImageHistory.slice(0, processedImageIndex + 1);
+    newHistory.push(image);
+    set({
+      processedImage: image,
+      processedImageHistory: newHistory,
+      processedImageIndex: newHistory.length - 1
+    });
+  },
   setOutlineWidth: (width) => {
     const cm = get().pixelsToCm(width);
     set({ outlineWidth: width, outlineWidthCm: cm });
@@ -190,7 +201,33 @@ export const useStickerStore = create<StickerStore>((set, get) => ({
     originalImage: get().originalImage, // Keep the image
   }),
 
-  resetImage: () => set({ processedImage: null }),
+  resetImage: () => set({
+    processedImage: null,
+    processedImageHistory: [null],
+    processedImageIndex: 0
+  }),
+
+  undoImage: () => {
+    const { processedImageHistory, processedImageIndex } = get();
+    if (processedImageIndex > 0) {
+      const newIndex = processedImageIndex - 1;
+      set({
+        processedImage: processedImageHistory[newIndex],
+        processedImageIndex: newIndex
+      });
+    }
+  },
+
+  redoImage: () => {
+    const { processedImageHistory, processedImageIndex } = get();
+    if (processedImageIndex < processedImageHistory.length - 1) {
+      const newIndex = processedImageIndex + 1;
+      set({
+        processedImage: processedImageHistory[newIndex],
+        processedImageIndex: newIndex
+      });
+    }
+  },
 
   cmToPixels: (cm: number) => {
     const dpi = get().dpi;

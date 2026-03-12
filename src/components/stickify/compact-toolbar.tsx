@@ -467,7 +467,8 @@ export function CompactToolbar() {
         const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/webp';
         const fileExt = format === 'jpg' ? 'jpg' : 'webp';
         const displayFormat = format === 'jpg' ? 'JPG' : 'WEBP';
-        const qualityValue = quality === 'high' ? 1.0 : quality === 'medium' ? 0.8 : 0.6;
+        // HTML5 Canvas quality 1.0 disables most compression leading to massive files. 0.92 is standard 'High' (visually lossless).
+        const qualityValue = quality === 'high' ? 0.92 : quality === 'medium' ? 0.75 : 0.6;
 
         canvas.toBlob((blob) => {
           if (!blob) throw new Error('Failed to create blob');

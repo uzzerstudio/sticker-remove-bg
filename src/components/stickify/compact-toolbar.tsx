@@ -225,7 +225,7 @@ export function CompactToolbar() {
     setBrushSize,
   } = useStickerStore();
 
-  const [format, setFormat] = useState<'png' | 'webp'>('png');
+  const [format, setFormat] = useState<'png' | 'webp' | 'jpg'>('png');
   const [quality, setQuality] = useState<Quality>('high');
   const [isExporting, setIsExporting] = useState(false);
 
@@ -357,7 +357,12 @@ export function CompactToolbar() {
       canvas.width = canvasWidth;
       canvas.height = canvasHeight;
       const ctx = canvas.getContext('2d')!;
-      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+      if (format === 'jpg') {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      } else {
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+      }
 
       const drawX = extraLeft + outlineWidth;
       const drawY = extraTop + outlineWidth;
@@ -459,7 +464,9 @@ export function CompactToolbar() {
           description: `El archivo ha sido optimizado con máxima calidad.`,
         });
       } else {
-        const mimeType = 'image/webp';
+        const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/webp';
+        const fileExt = format === 'jpg' ? 'jpg' : 'webp';
+        const displayFormat = format === 'jpg' ? 'JPG' : 'WEBP';
         const qualityValue = quality === 'high' ? 1.0 : quality === 'medium' ? 0.8 : 0.6;
 
         canvas.toBlob((blob) => {
@@ -468,14 +475,14 @@ export function CompactToolbar() {
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = `sticker-${Date.now()}.webp`;
+          link.download = `sticker-${Date.now()}.${fileExt}`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
           URL.revokeObjectURL(url);
 
           toast({
-            title: `✓ Exportado como WEBP`,
+            title: `✓ Exportado como ${displayFormat}`,
             description: `Calidad: ${quality === 'high' ? 'Máxima' : quality === 'medium' ? 'Media' : 'Baja'}`,
           });
         }, mimeType, qualityValue);
@@ -679,13 +686,14 @@ export function CompactToolbar() {
 
         {/* Quadrant 4: Final Export */}
         <div className="order-4 sm:order-3 flex items-center justify-end gap-1.5 sm:gap-3">
-          <Select value={format} onValueChange={(v) => setFormat(v as 'png' | 'webp')}>
+          <Select value={format} onValueChange={(v) => setFormat(v as 'png' | 'webp' | 'jpg')}>
             <SelectTrigger className="w-[62px] sm:w-[75px] h-8 sm:h-10 text-[10px] sm:text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="png">PNG</SelectItem>
               <SelectItem value="webp">WebP</SelectItem>
+              <SelectItem value="jpg">JPG</SelectItem>
             </SelectContent>
           </Select>
 

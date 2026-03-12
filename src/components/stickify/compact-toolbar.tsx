@@ -350,8 +350,9 @@ export function CompactToolbar() {
       const extraRight = Math.max(0, padding.right);
       const extraBottom = Math.max(0, padding.bottom);
 
-      const canvasWidth = Math.max(1, srcWidth) + extraLeft + extraRight + outlineWidth * 2;
-      const canvasHeight = Math.max(1, srcHeight) + extraTop + extraBottom + outlineWidth * 2;
+      const outlineSpace = outlineWidth > 0 ? outlineWidth * 2 : 0;
+      const canvasWidth = Math.max(1, srcWidth) + extraLeft + extraRight + outlineSpace;
+      const canvasHeight = Math.max(1, srcHeight) + extraTop + extraBottom + outlineSpace;
 
       const canvas = document.createElement('canvas');
       canvas.width = canvasWidth;
@@ -364,8 +365,8 @@ export function CompactToolbar() {
         ctx.clearRect(0, 0, canvasWidth, canvasHeight);
       }
 
-      const drawX = extraLeft + outlineWidth;
-      const drawY = extraTop + outlineWidth;
+      const drawX = extraLeft + (outlineWidth > 0 ? outlineWidth : 0);
+      const drawY = extraTop + (outlineWidth > 0 ? outlineWidth : 0);
 
       const croppedCanvas = document.createElement('canvas');
       croppedCanvas.width = Math.max(1, srcWidth);
@@ -429,13 +430,20 @@ export function CompactToolbar() {
       tCtx.drawImage(pngCanvas, 0, 0);
       // ─────────────────────────────────────────────────────────────────────
 
-      // ── Outline (CPU equivalent of SVG filter) — drawn BEFORE composite ──
-      if (outlineWidth > 0) {
-        createOutline(ctx, tempCanvas, outlineWidth, outlineColor, canvasWidth, canvasHeight);
+      // ── Outline (CPU equivalent of SVG filter) — drawn depending on sign ──
+      if (outlineWidth !== 0) {
+        if (outlineWidth > 0) {
+          // outer: drawn under composite
+          createOutline(ctx, tempCanvas, outlineWidth, outlineColor, canvasWidth, canvasHeight);
+          ctx.drawImage(tempCanvas, 0, 0);
+        } else {
+          // inner: drawn over composite
+          ctx.drawImage(tempCanvas, 0, 0);
+          createOutline(ctx, tempCanvas, outlineWidth, outlineColor, canvasWidth, canvasHeight);
+        }
+      } else {
+        ctx.drawImage(tempCanvas, 0, 0);
       }
-
-      // ── Composite (fill + PNG) drawn ON TOP of outline ────────────────────
-      ctx.drawImage(tempCanvas, 0, 0);
 
 
 
@@ -545,10 +553,10 @@ export function CompactToolbar() {
         </div>
 
         {/* Quadrant 2: Formatting (Outline & Color) */}
-        <div className="flex items-center justify-end sm:justify-center gap-2 order-2 sm:order-2">
+        <div className="order-2 sm:order-2 flex items-center justify-end flex-wrap gap-1 sm:gap-2">
           {/* Outline Rocker */}
           <div className="flex items-center bg-muted/30 rounded-lg p-0.5 border border-border/50 scale-90 sm:scale-100 origin-right">
-            <Button variant="ghost" size="icon" className="h-6 w-6 sm:h-7 sm:w-7" onClick={() => setOutlineWidth(Math.max(0, outlineWidth - 1))}>
+            <Button variant="ghost" size="icon" className="h-6 w-6 sm:h-7 sm:w-7" onClick={() => setOutlineWidth(Math.max(-100, outlineWidth - 1))}>
               <Minus className="h-3 w-3" />
             </Button>
             <div className="flex items-center px-1 min-w-[34px] sm:min-w-[45px] justify-center">

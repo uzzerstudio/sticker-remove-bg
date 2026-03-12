@@ -37,7 +37,10 @@ function createOutline(
   w: number,
   h: number
 ) {
-  if (outlineWidth <= 0) return;
+  if (outlineWidth === 0) return;
+
+  const isInner = outlineWidth < 0;
+  const absWidth = Math.abs(outlineWidth);
 
   const hex = outlineColor.replace('#', '');
   const rC = parseInt(hex.substring(0, 2), 16);
@@ -49,7 +52,8 @@ function createOutline(
   const pixels = srcCtx.getImageData(0, 0, w, h).data;
   const binary = new Uint8Array(w * h);
   for (let i = 0; i < binary.length; i++) {
-    binary[i] = pixels[i * 4 + 3] >= 128 ? 255 : 0;
+    const isOpaque = pixels[i * 4 + 3] >= 128;
+    binary[i] = isInner ? (isOpaque ? 0 : 255) : (isOpaque ? 255 : 0);
   }
 
   // 2. Dilation (Box sweep)
@@ -60,30 +64,30 @@ function createOutline(
       let last = -0x7fffffff;
       for (let col = 0; col < w; col++) {
         if (binary[row * w + col]) last = col;
-        if (col - last <= outlineWidth) tmp[row * w + col] = 255;
+        if (col - last <= absWidth) tmp[row * w + col] = 255;
       }
       last = 0x7fffffff;
       for (let col = w - 1; col >= 0; col--) {
         if (binary[row * w + col]) last = col;
-        if (last - col <= outlineWidth) tmp[row * w + col] = 255;
+        if (last - col <= absWidth) tmp[row * w + col] = 255;
       }
     }
     for (let col = 0; col < w; col++) {
       let last = -0x7fffffff;
       for (let row = 0; row < h; row++) {
         if (tmp[row * w + col]) last = row;
-        if (row - last <= outlineWidth) dilated[row * w + col] = 255;
+        if (row - last <= absWidth) dilated[row * w + col] = 255;
       }
       last = 0x7fffffff;
       for (let row = h - 1; row >= 0; row--) {
         if (tmp[row * w + col]) last = row;
-        if (last - row <= outlineWidth) dilated[row * w + col] = 255;
+        if (last - row <= absWidth) dilated[row * w + col] = 255;
       }
     }
   }
 
   // 3. 3x Box Blur ≈ Gaussian
-  const blurRad = Math.max(1, Math.round(outlineWidth * 0.35 * 1.73));
+  const blurRad = Math.max(1, Math.round(absWidth * 0.35 * 1.73));
   function boxBlur(src: Uint8Array): Uint8Array {
     const hPass = new Float32Array(w * h);
     const norm = 2 * blurRad + 1;
@@ -125,6 +129,7 @@ function createOutline(
   for (let i = 0; i < blurred.length; i++) {
     const a = Math.round(Math.min(1, Math.max(0, 20 * (blurred[i] / 255) - 10)) * 255);
     if (a > 0) {
+      if (isInner && pixels[i * 4 + 3] < 128) continue; // Only draw inner outline inside the object
       const px = i * 4;
       outlineData.data[px] = rC;
       outlineData.data[px + 1] = gC;
@@ -315,7 +320,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     const totalPaddingH = extraLeft + extraRight;
     const totalPaddingV = extraTop + extraBottom;
     const dpr = window.devicePixelRatio || 1;
-    const outlineSpace = outlineWidth * 2;
+    const outlineSpace = outlineWidth > 0 ? outlineWidth * 2 : 0;
 
     const logicalWidth = finalSrcWidth + totalPaddingH + outlineSpace;
     const logicalHeight = finalSrcHeight + totalPaddingV + outlineSpace;
@@ -326,8 +331,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
     ctx.clearRect(0, 0, logicalWidth, logicalHeight);
 
-    const drawX = extraLeft + outlineWidth;
-    const drawY = extraTop + outlineWidth;
+    const drawX = extraLeft + (outlineWidth > 0 ? outlineWidth : 0);
+    const drawY = extraTop + (outlineWidth > 0 ? outlineWidth : 0);
 
     const croppedCanvas = document.createElement('canvas');
     croppedCanvas.width = finalSrcWidth;
@@ -367,10 +372,19 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
     tempCtx.drawImage(pngCanvas, 0, 0);
 
-    if (outlineWidth > 0) {
-      createOutline(ctx, tempCanvas, outlineWidth, outlineColor, logicalWidth, logicalHeight);
+    if (outlineWidth !== 0) {
+      if (outlineWidth > 0) {
+        // Outer outline is drawn BEFORE the image (UNDER)
+        createOutline(ctx, tempCanvas, outlineWidth, outlineColor, logicalWidth, logicalHeight);
+        ctx.drawImage(tempCanvas, 0, 0);
+      } else {
+        // Inner outline is drawn AFTER the image (OVER)
+        ctx.drawImage(tempCanvas, 0, 0);
+        createOutline(ctx, tempCanvas, outlineWidth, outlineColor, logicalWidth, logicalHeight);
+      }
+    } else {
+      ctx.drawImage(tempCanvas, 0, 0);
     }
-    ctx.drawImage(tempCanvas, 0, 0);
   }, [outlineWidth, outlineColor, padding, fillMaskImg, transparencyImg]);
 
   // Fit image to screen helper

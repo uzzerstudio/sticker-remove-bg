@@ -21,7 +21,11 @@ export const metadata: Metadata = {
   keywords: ["stickers", "editor", "remover fondo", "PNG", "WebP", "generador", "sticker"],
   authors: [{ name: "Sticker Team" }],
   icons: {
-    icon: "/sticker-logo.png",
+    icon: [
+      { url: "sticker-logo.png", href: "sticker-logo.png" },
+    ],
+    shortcut: "sticker-logo.png",
+    apple: "sticker-logo.png",
   },
   openGraph: {
     title: "Generador de sticker - Creador de Stickers",

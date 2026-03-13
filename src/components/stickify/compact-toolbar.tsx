@@ -419,7 +419,8 @@ export function CompactToolbar() {
         cCtx.fillStyle = outlineColor;
         cCtx.fillRect(0, 0, canvasWidth, canvasHeight);
         cCtx.globalCompositeOperation = 'destination-in';
-        cCtx.drawImage(fillMaskImg, 0, 0, canvasWidth, canvasHeight);
+        // Draw mask relative to image position, accounted for cropping
+        cCtx.drawImage(fillMaskImg, cropLeft, cropTop, Math.max(1, srcWidth), Math.max(1, srcHeight), drawX, drawY, Math.max(1, srcWidth), Math.max(1, srcHeight));
         tCtx.drawImage(colorCanvas, 0, 0);
       }
 
@@ -434,7 +435,8 @@ export function CompactToolbar() {
       if (transImg) {
         pngCtx.save();
         pngCtx.globalCompositeOperation = 'destination-out';
-        pngCtx.drawImage(transImg, 0, 0, canvasWidth, canvasHeight);
+        // Draw mask relative to image position, accounted for cropping
+        pngCtx.drawImage(transImg, cropLeft, cropTop, Math.max(1, srcWidth), Math.max(1, srcHeight), drawX, drawY, Math.max(1, srcWidth), Math.max(1, srcHeight));
         pngCtx.restore();
       }
       // ⚠️  Do NOT call thresholdCanvasAlpha here — it destroys anti-aliasing

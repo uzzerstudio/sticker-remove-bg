@@ -148,6 +148,17 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const hasFittedOnceRef = useRef(false);
   const didJustDragRef = useRef(false);
+  const renderParamsRef = useRef({
+    drawX: 0,
+    drawY: 0,
+    cropLeft: 0,
+    cropTop: 0,
+    finalSrcWidth: 0,
+    finalSrcHeight: 0,
+    logicalWidth: 0,
+    logicalHeight: 0,
+    dpr: 1
+  });
 
   const {
     processedImage,
@@ -334,6 +345,11 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     const drawX = extraLeft + (outlineWidth > 0 ? outlineWidth : 0);
     const drawY = extraTop + (outlineWidth > 0 ? outlineWidth : 0);
 
+    // Save params for mouse interaction mapping
+    renderParamsRef.current = {
+      drawX, drawY, cropLeft, cropTop, finalSrcWidth, finalSrcHeight, logicalWidth, logicalHeight, dpr
+    };
+
     const croppedCanvas = document.createElement('canvas');
     croppedCanvas.width = finalSrcWidth;
     croppedCanvas.height = finalSrcHeight;
@@ -353,7 +369,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       cCtx.fillStyle = outlineColor;
       cCtx.fillRect(0, 0, logicalWidth, logicalHeight);
       cCtx.globalCompositeOperation = 'destination-in';
-      cCtx.drawImage(fillMaskImg, 0, 0, logicalWidth, logicalHeight);
+      // Draw mask relative to image position, accounted for cropping
+      cCtx.drawImage(fillMaskImg, cropLeft, cropTop, finalSrcWidth, finalSrcHeight, drawX, drawY, finalSrcWidth, finalSrcHeight);
       tempCtx.drawImage(colorCanvas, 0, 0);
     }
 
@@ -366,7 +383,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     if (transparencyImg) {
       pngCtx.save();
       pngCtx.globalCompositeOperation = 'destination-out';
-      pngCtx.drawImage(transparencyImg, 0, 0, logicalWidth, logicalHeight);
+      // Draw mask relative to image position, accounted for cropping
+      pngCtx.drawImage(transparencyImg, cropLeft, cropTop, finalSrcWidth, finalSrcHeight, drawX, drawY, finalSrcWidth, finalSrcHeight);
       pngCtx.restore();
     }
 
@@ -525,14 +543,21 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     lastPosRef.current = coords;
 
     if (activeTool === 'brush_erase') {
-      const canvas = canvasRef.current;
+      const img = imageRef.current;
+      if (!img) return;
+      const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
+
       const offCanvas = document.createElement('canvas');
-      offCanvas.width = canvas.width;
-      offCanvas.height = canvas.height;
+      offCanvas.width = img.naturalWidth;
+      offCanvas.height = img.naturalHeight;
       const bCtx = offCanvas.getContext('2d')!;
       if (transparencyImg) {
         bCtx.drawImage(transparencyImg, 0, 0);
       }
+
+      // Map coords to image-local space
+      const localX = (coords.x / dpr) - drawX + cropLeft;
+      const localY = (coords.y / dpr) - drawY + cropTop;
 
       // Initial point
       bCtx.lineJoin = 'round';
@@ -540,8 +565,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       bCtx.lineWidth = brushSize;
       bCtx.strokeStyle = 'black';
       bCtx.beginPath();
-      bCtx.moveTo(coords.x, coords.y);
-      bCtx.lineTo(coords.x, coords.y);
+      bCtx.moveTo(localX, localY);
+      bCtx.lineTo(localX, localY);
       bCtx.stroke();
 
       brushCanvasRef.current = offCanvas;
@@ -560,6 +585,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       setMousePos({ x: e.clientX, y: e.clientY });
 
       if (activeTool === 'brush_erase' && brushCanvasRef.current) {
+        const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
         const bCtx = brushCanvasRef.current.getContext('2d')!;
         bCtx.lineJoin = 'round';
         bCtx.lineCap = 'round';
@@ -567,9 +593,14 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
         bCtx.strokeStyle = 'black';
 
         const last = lastPosRef.current || coords;
+        const lastLocalX = (last.x / dpr) - drawX + cropLeft;
+        const lastLocalY = (last.y / dpr) - drawY + cropTop;
+        const currentLocalX = (coords.x / dpr) - drawX + cropLeft;
+        const currentLocalY = (coords.y / dpr) - drawY + cropTop;
+
         bCtx.beginPath();
-        bCtx.moveTo(last.x, last.y);
-        bCtx.lineTo(coords.x, coords.y);
+        bCtx.moveTo(lastLocalX, lastLocalY);
+        bCtx.lineTo(currentLocalX, currentLocalY);
         bCtx.stroke();
 
         lastPosRef.current = coords;
@@ -587,17 +618,31 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       const canvas = canvasRef.current;
 
       if (activeTool === 'fill' || activeTool === 'erase') {
+        const img = imageRef.current;
+        if (!img) {
+          setIsDragging(false);
+          return;
+        }
+        const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
+
         const x1 = Math.min(dragStart.x, dragCurrent.x);
         const y1 = Math.min(dragStart.y, dragCurrent.y);
         const x2 = Math.max(dragStart.x, dragCurrent.x);
         const y2 = Math.max(dragStart.y, dragCurrent.y);
-        const width = x2 - x1;
-        const height = y2 - y1;
 
-        if (width > 4 && height > 4) {
+        // Convert drag rect to image-local space
+        const localX1 = (x1 / dpr) - drawX + cropLeft;
+        const localY1 = (y1 / dpr) - drawY + cropTop;
+        const localX2 = (x2 / dpr) - drawX + cropLeft;
+        const localY2 = (y2 / dpr) - drawY + cropTop;
+
+        const width = localX2 - localX1;
+        const height = localY2 - localY1;
+
+        if (width > 0 && height > 0) {
           const fillCanvas = document.createElement('canvas');
-          fillCanvas.width = canvas.width;
-          fillCanvas.height = canvas.height;
+          fillCanvas.width = img.naturalWidth;
+          fillCanvas.height = img.naturalHeight;
           const fCtx = fillCanvas.getContext('2d')!;
 
           const currentImg = activeTool === 'erase' ? transparencyImg : fillMaskImg;

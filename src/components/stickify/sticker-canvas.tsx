@@ -660,7 +660,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
           if (currentImg) fCtx.drawImage(currentImg, 0, 0);
 
           fCtx.fillStyle = 'black';
-          fCtx.fillRect(x1, y1, width, height);
+          fCtx.fillRect(localX1, localY1, width, height);
 
           if (activeTool === 'erase') {
             setTransparencyMask(fillCanvas.toDataURL());

@@ -202,6 +202,9 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const brushCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number, y: number } | null>(null);
   const [marginDragState, setMarginDragState] = useState<{ edge: 'top' | 'right' | 'bottom' | 'left' | null; startVal: number; startPos: number }>({ edge: null, startVal: 0, startPos: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{ x: number, y: number } | null>(null);
+  const scrollStartRef = useRef<{ left: number, top: number } | null>(null);
 
   // Undo/Redo shortcuts
   useEffect(() => {
@@ -537,6 +540,17 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
         const currentZoom = state.zoom;
         const delta = e.deltaY < 0 ? 0.1 : -0.1;
         state.setZoom(Math.max(0.1, Math.min(5, currentZoom + delta)));
+      } else {
+        // Natural wheel scroll (vertical by default, horizontal with shift)
+        const scrollContainer = containerRef.current?.parentElement;
+        if (scrollContainer) {
+          if (e.shiftKey) {
+            scrollContainer.scrollLeft += e.deltaY;
+            e.preventDefault();
+          } else {
+            // Browser handles vertical scroll naturally
+          }
+        }
       }
     };
 
@@ -545,6 +559,20 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Middle click (button 1) or Space+LeftClick (simulate space logic later if needed)
+    // Here we focus on Middle Click to solve the user request
+    if (e.button === 1) {
+      e.preventDefault();
+      const scrollContainer = containerRef.current?.parentElement;
+      if (scrollContainer) {
+        setIsPanning(true);
+        panStartRef.current = { x: e.clientX, y: e.clientY };
+        scrollStartRef.current = { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop };
+        document.body.style.cursor = 'grabbing';
+      }
+      return;
+    }
+
     if (activeTool === 'none' || !canvasRef.current) return;
 
     const coords = getClampedCoords(e.clientX, e.clientY);
@@ -588,110 +616,131 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   };
 
   useEffect(() => {
-    if (!isDragging) return;
+    if (!isDragging && !isPanning) return;
 
     const handleGlobalMouseMove = (e: MouseEvent) => {
-      const coords = getClampedCoords(e.clientX, e.clientY);
-      setDragCurrent(coords);
-      setMousePos({ x: e.clientX, y: e.clientY });
-
-      if (activeTool === 'brush_erase' && brushCanvasRef.current) {
-        const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
-        const bCtx = brushCanvasRef.current.getContext('2d')!;
-        bCtx.lineJoin = 'round';
-        bCtx.lineCap = 'round';
-        bCtx.lineWidth = brushSize;
-        bCtx.strokeStyle = 'black';
-
-        const last = lastPosRef.current || coords;
-        const lastLocalX = (last.x / dpr) - drawX + cropLeft;
-        const lastLocalY = (last.y / dpr) - drawY + cropTop;
-        const currentLocalX = (coords.x / dpr) - drawX + cropLeft;
-        const currentLocalY = (coords.y / dpr) - drawY + cropTop;
-
-        bCtx.beginPath();
-        bCtx.moveTo(lastLocalX, lastLocalY);
-        bCtx.lineTo(currentLocalX, currentLocalY);
-        bCtx.stroke();
-
-        lastPosRef.current = coords;
-        setTransparencyMaskOnly(brushCanvasRef.current.toDataURL());
-      }
-    };
-
-    const handleGlobalMouseUp = () => {
-      if (!dragStart || !dragCurrent || !canvasRef.current) {
-        setIsDragging(false);
-        lastPosRef.current = null;
+      if (isPanning && panStartRef.current && scrollStartRef.current) {
+        const scrollContainer = containerRef.current?.parentElement;
+        if (scrollContainer) {
+          const dx = e.clientX - panStartRef.current.x;
+          const dy = e.clientY - panStartRef.current.y;
+          // Inverted scroll to mimic mobile "pulling the content"
+          scrollContainer.scrollLeft = scrollStartRef.current.left - dx;
+          scrollContainer.scrollTop = scrollStartRef.current.top - dy;
+        }
         return;
       }
 
-      const canvas = canvasRef.current;
+      if (isDragging) {
+        const coords = getClampedCoords(e.clientX, e.clientY);
+        setDragCurrent(coords);
+        setMousePos({ x: e.clientX, y: e.clientY });
 
-      if (activeTool === 'fill' || activeTool === 'erase') {
-        const img = imageRef.current;
-        if (!img) {
-          setIsDragging(false);
+        if (activeTool === 'brush_erase' && brushCanvasRef.current) {
+          const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
+          const bCtx = brushCanvasRef.current.getContext('2d')!;
+          bCtx.lineJoin = 'round';
+          bCtx.lineCap = 'round';
+          bCtx.lineWidth = brushSize;
+          bCtx.strokeStyle = 'black';
+
+          const last = lastPosRef.current || coords;
+          const lastLocalX = (last.x / dpr) - drawX + cropLeft;
+          const lastLocalY = (last.y / dpr) - drawY + cropTop;
+          const currentLocalX = (coords.x / dpr) - drawX + cropLeft;
+          const currentLocalY = (coords.y / dpr) - drawY + cropTop;
+
+          bCtx.beginPath();
+          bCtx.moveTo(lastLocalX, lastLocalY);
+          bCtx.lineTo(currentLocalX, currentLocalY);
+          bCtx.stroke();
+
+          lastPosRef.current = coords;
+          setTransparencyMaskOnly(brushCanvasRef.current.toDataURL());
+        }
+      };
+
+      const handleGlobalMouseUp = () => {
+        if (isPanning) {
+          setIsPanning(false);
+          panStartRef.current = null;
+          scrollStartRef.current = null;
+          document.body.style.cursor = 'default';
           return;
         }
-        const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
 
-        const x1 = Math.min(dragStart.x, dragCurrent.x);
-        const y1 = Math.min(dragStart.y, dragCurrent.y);
-        const x2 = Math.max(dragStart.x, dragCurrent.x);
-        const y2 = Math.max(dragStart.y, dragCurrent.y);
-
-        // Convert drag rect to image-local space
-        const localX1 = (x1 / dpr) - drawX + cropLeft;
-        const localY1 = (y1 / dpr) - drawY + cropTop;
-        const localX2 = (x2 / dpr) - drawX + cropLeft;
-        const localY2 = (y2 / dpr) - drawY + cropTop;
-
-        const width = localX2 - localX1;
-        const height = localY2 - localY1;
-
-        if (width > 0 && height > 0) {
-          const fillCanvas = document.createElement('canvas');
-          fillCanvas.width = img.naturalWidth;
-          fillCanvas.height = img.naturalHeight;
-          const fCtx = fillCanvas.getContext('2d')!;
-
-          const currentImg = activeTool === 'erase' ? transparencyImg : fillMaskImg;
-          if (currentImg) fCtx.drawImage(currentImg, 0, 0);
-
-          fCtx.fillStyle = 'black';
-          fCtx.fillRect(localX1, localY1, width, height);
-
-          if (activeTool === 'erase') {
-            setTransparencyMask(fillCanvas.toDataURL());
-          } else {
-            setManualFillMask(fillCanvas.toDataURL());
-          }
-          toast({ title: activeTool === 'erase' ? "Área borrada" : "Área rellenada" });
-          didJustDragRef.current = true;
-        } else {
-          didJustDragRef.current = false;
+        if (!dragStart || !dragCurrent || !canvasRef.current || !isDragging) {
+          setIsDragging(false);
+          lastPosRef.current = null;
+          return;
         }
-      } else if (activeTool === 'brush_erase') {
-        commitTransparencyHistory();
-        toast({ title: "Borrado completado" });
-        didJustDragRef.current = true;
-      }
 
-      setIsDragging(false);
-      setDragStart(null);
-      setDragCurrent(null);
-      lastPosRef.current = null;
-      brushCanvasRef.current = null;
-    };
+        const canvas = canvasRef.current;
 
-    window.addEventListener('mousemove', handleGlobalMouseMove);
-    window.addEventListener('mouseup', handleGlobalMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleGlobalMouseMove);
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-    };
-  }, [isDragging, dragStart, dragCurrent, fillMaskImg, transparencyImg, getClampedCoords, setManualFillMask, setTransparencyMask, setTransparencyMaskOnly, commitTransparencyHistory, activeTool, brushSize]);
+        if (activeTool === 'fill' || activeTool === 'erase') {
+          const img = imageRef.current;
+          if (!img) {
+            setIsDragging(false);
+            return;
+          }
+          const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
+
+          const x1 = Math.min(dragStart.x, dragCurrent.x);
+          const y1 = Math.min(dragStart.y, dragCurrent.y);
+          const x2 = Math.max(dragStart.x, dragCurrent.x);
+          const y2 = Math.max(dragStart.y, dragCurrent.y);
+
+          // Convert drag rect to image-local space
+          const localX1 = (x1 / dpr) - drawX + cropLeft;
+          const localY1 = (y1 / dpr) - drawY + cropTop;
+          const localX2 = (x2 / dpr) - drawX + cropLeft;
+          const localY2 = (y2 / dpr) - drawY + cropTop;
+
+          const width = localX2 - localX1;
+          const height = localY2 - localY1;
+
+          if (width > 0 && height > 0) {
+            const fillCanvas = document.createElement('canvas');
+            fillCanvas.width = img.naturalWidth;
+            fillCanvas.height = img.naturalHeight;
+            const fCtx = fillCanvas.getContext('2d')!;
+
+            const currentImg = activeTool === 'erase' ? transparencyImg : fillMaskImg;
+            if (currentImg) fCtx.drawImage(currentImg, 0, 0);
+
+            fCtx.fillStyle = 'black';
+            fCtx.fillRect(localX1, localY1, width, height);
+
+            if (activeTool === 'erase') {
+              setTransparencyMask(fillCanvas.toDataURL());
+            } else {
+              setManualFillMask(fillCanvas.toDataURL());
+            }
+            toast({ title: activeTool === 'erase' ? "Área borrada" : "Área rellenada" });
+            didJustDragRef.current = true;
+          } else {
+            didJustDragRef.current = false;
+          }
+        } else if (activeTool === 'brush_erase') {
+          commitTransparencyHistory();
+          toast({ title: "Borrado completado" });
+          didJustDragRef.current = true;
+        }
+
+        setIsDragging(false);
+        setDragStart(null);
+        setDragCurrent(null);
+        lastPosRef.current = null;
+        brushCanvasRef.current = null;
+      };
+
+      window.addEventListener('mousemove', handleGlobalMouseMove);
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleGlobalMouseMove);
+        window.removeEventListener('mouseup', handleGlobalMouseUp);
+      };
+    }, [isDragging, isPanning, dragStart, dragCurrent, fillMaskImg, transparencyImg, getClampedCoords, setManualFillMask, setTransparencyMask, setTransparencyMaskOnly, commitTransparencyHistory, activeTool, brushSize]);
 
   // Track mouse position for the brush preview even when not dragging
   useEffect(() => {

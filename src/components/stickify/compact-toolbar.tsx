@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useLanguage } from '@/components/language-provider';
 import { useStickerStore } from './sticker-store';
 import { Button } from '@/components/ui/button';
@@ -239,6 +239,15 @@ export function CompactToolbar() {
   const [format, setFormat] = useState<'png' | 'webp' | 'jpg'>('png');
   const [quality, setQuality] = useState<Quality>('high');
   const [isExporting, setIsExporting] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile view
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768);
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Brush sizes
   const BRUSH_SIZES = [
@@ -673,18 +682,20 @@ export function CompactToolbar() {
 
           {/* Margins Control Block */}
           <div className="flex items-center gap-1 bg-muted/20 p-0.5 rounded-lg border border-border/50 scale-75 sm:scale-90 origin-left">
-            <div className="grid grid-cols-2 gap-0.5">
-              {['top', 'right', 'bottom', 'left'].map((key) => (
-                <Input
-                  key={key}
-                  type="number"
-                  value={padding[key as keyof typeof padding]}
-                  onChange={(e) => setPadding({ ...padding, [key]: parseInt(e.target.value) || 0 })}
-                  className="w-7 h-5 text-[8px] p-0 text-center bg-background border-muted"
-                />
-              ))}
-            </div>
-            <div className="flex flex-col gap-0.5 ml-1 pl-1 border-l border-border/50">
+            {!isMobile && (
+              <div className="grid grid-cols-2 gap-0.5">
+                {['top', 'right', 'bottom', 'left'].map((key) => (
+                  <Input
+                    key={key}
+                    type="number"
+                    value={padding[key as keyof typeof padding]}
+                    onChange={(e) => setPadding({ ...padding, [key]: parseInt(e.target.value) || 0 })}
+                    className="w-7 h-5 text-[8px] p-0 text-center bg-background border-muted"
+                  />
+                ))}
+              </div>
+            )}
+            <div className={cn("flex flex-col gap-0.5", !isMobile && "ml-1 pl-1 border-l border-border/50")}>
               <Button
                 variant="ghost"
                 size="icon"

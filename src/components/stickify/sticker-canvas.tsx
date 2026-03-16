@@ -5,6 +5,7 @@ import { useStickerStore } from './sticker-store';
 import { useLanguage } from '@/components/language-provider';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { RotateCcw } from 'lucide-react';
 
 interface StickerCanvasProps {
   className?: string;
@@ -1170,6 +1171,33 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                 boxSizing: 'border-box'
               }}
             />
+          )}
+
+          {/* Floating Undo/Redo for Mobile (Top Center) */}
+          {isMobile && (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex gap-2 bg-background/80 backdrop-blur-md border border-border p-1.5 rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 duration-300">
+              <button
+                onClick={() => {
+                  if (activeTool === 'brush_erase' || activeTool === 'erase') undoErase();
+                  else if (activeTool === 'fill') undo();
+                  else undoImage();
+                }}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-secondary active:scale-95 transition-all text-foreground"
+              >
+                <RotateCcw className="w-5 h-5" />
+              </button>
+              <div className="w-px h-6 bg-border self-center" />
+              <button
+                onClick={() => {
+                  if (activeTool === 'brush_erase' || activeTool === 'erase') redoErase();
+                  else if (activeTool === 'fill') redo();
+                  else redoImage();
+                }}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-secondary active:scale-95 transition-all text-foreground"
+              >
+                <RotateCcw className="w-5 h-5 scale-x-[-1]" />
+              </button>
+            </div>
           )}
 
           {/* Floating Brush Size Control for Mobile (Left side) */}

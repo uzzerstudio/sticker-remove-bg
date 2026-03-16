@@ -559,8 +559,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Middle click (button 1) or Space+LeftClick (simulate space logic later if needed)
-    // Here we focus on Middle Click to solve the user request
+    // Middle click (button 1)
     if (e.button === 1) {
       e.preventDefault();
       const scrollContainer = containerRef.current?.parentElement;
@@ -568,7 +567,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
         setIsPanning(true);
         panStartRef.current = { x: e.clientX, y: e.clientY };
         scrollStartRef.current = { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop };
-        document.body.style.cursor = 'grabbing';
       }
       return;
     }
@@ -887,7 +885,13 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const canvasDisplayHeight = (actualImgHeight + extraV + outlineWidth * 2) * zoom;
 
   return (
-    <div className={cn("flex-1 w-full min-h-0 relative overflow-auto custom-scrollbar", className)}>
+    <div
+      className={cn(
+        "flex-1 w-full min-h-0 relative overflow-auto custom-scrollbar",
+        isPanning ? "cursor-grabbing" : "cursor-default",
+        className
+      )}
+    >
       <div
         ref={containerRef}
         onMouseDown={handleMouseDown}

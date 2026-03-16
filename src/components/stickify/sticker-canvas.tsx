@@ -4,31 +4,14 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useStickerStore } from './sticker-store';
 import { useLanguage } from '@/components/language-provider';
 import { toast } from '@/hooks/use-toast';
-import { ZoomIn, ZoomOut, Maximize2, Crop } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface StickerCanvasProps {
   className?: string;
 }
 
-// Apply gaussian blur to alpha channel for anti-aliasing
-// Helper to apply threshold to a canvas
-function thresholdCanvasAlpha(canvas: HTMLCanvasElement) {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) {
-    // Threshold alpha at 128 (50%)
-    data[i + 3] = data[i + 3] < 128 ? 0 : 255;
-  }
-  ctx.putImageData(imageData, 0, 0);
-}
-
-/**
- * createOutline — CPU port of the high-fidelity outline pipeline:
- * Matches the export logic exactly for perfect parity.
- */
+// createOutline — CPU port of the high-fidelity outline pipeline:
+// Matches the export logic exactly for perfect parity.
 function createOutline(
   ctx: CanvasRenderingContext2D,
   compositeCanvas: HTMLCanvasElement,
@@ -101,42 +84,42 @@ function createOutline(
         hPass[row * w + col] = sum / norm;
       }
     }
-    const out = new Uint8Array(w * h);
+    const final = new Uint8Array(w * h);
     for (let col = 0; col < w; col++) {
       let sum = 0;
       for (let y = -blurRad; y <= blurRad; y++) sum += (y >= 0 && y < h) ? hPass[y * w + col] : 0;
-      out[0 * w + col] = Math.max(0, Math.min(255, sum / norm));
+      final[0 * w + col] = Math.round(sum / norm);
       for (let row = 1; row < h; row++) {
         const addY = row + blurRad; if (addY < h) sum += hPass[addY * w + col];
         const remY = row - blurRad - 1; if (remY >= 0) sum -= hPass[remY * w + col];
-        out[row * w + col] = Math.max(0, Math.min(255, sum / norm));
+        final[row * w + col] = Math.round(sum / norm);
       }
     }
-    return out;
+    return final;
   }
 
-  let blurred = boxBlur(dilated);
-  blurred = boxBlur(blurred);
-  blurred = boxBlur(blurred);
+  const b1 = boxBlur(dilated);
+  const b2 = boxBlur(b1);
+  const b3 = boxBlur(b2);
 
-  // 4. Smooth Edge Formula (Matches SVG 20 -10)
+  // 4. Compose and mask
   const outCanvas = document.createElement('canvas');
   outCanvas.width = w;
   outCanvas.height = h;
   const outCtx = outCanvas.getContext('2d')!;
   const outlineData = outCtx.createImageData(w, h);
+  const outBinary = outlineData.data;
 
-  for (let i = 0; i < blurred.length; i++) {
-    const a = Math.round(Math.min(1, Math.max(0, 20 * (blurred[i] / 255) - 10)) * 255);
-    if (a > 0) {
-      if (isInner && pixels[i * 4 + 3] < 128) continue; // Only draw inner outline inside the object
-      const px = i * 4;
-      outlineData.data[px] = rC;
-      outlineData.data[px + 1] = gC;
-      outlineData.data[px + 2] = bC;
-      outlineData.data[px + 3] = a;
-    }
+  for (let i = 0; i < w * h; i++) {
+    const alpha = b3[i];
+    if (alpha <= 0) continue;
+    const idx = i * 4;
+    outBinary[idx] = rC;
+    outBinary[idx + 1] = gC;
+    outBinary[idx + 2] = bC;
+    outBinary[idx + 3] = alpha;
   }
+
   outCtx.putImageData(outlineData, 0, 0);
   ctx.drawImage(outCanvas, 0, 0);
 }
@@ -206,6 +189,20 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const panStartRef = useRef<{ x: number, y: number } | null>(null);
   const scrollStartRef = useRef<{ left: number, top: number } | null>(null);
 
+  // Replaces the middle-click block with a global context menu block when panning
+  useEffect(() => {
+    const handleContextMenuCapture = (e: MouseEvent) => {
+      // If panning is active or if we are clicking inside the container, block it
+      if (isPanning || (containerRef.current && containerRef.current.contains(e.target as Node))) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    // Use capture to stop it before the browser triggers the menu
+    window.addEventListener('contextmenu', handleContextMenuCapture, { capture: true });
+    return () => window.removeEventListener('contextmenu', handleContextMenuCapture, { capture: true });
+  }, [isPanning]);
+
   // Undo/Redo shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -252,20 +249,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, undoErase, redoErase, undoImage, redoImage, activeTool, zoom, setZoom, outlineWidth, setOutlineWidth, setActiveTool]);
-
-  // Replaces the middle-click block with a global context menu block when panning
-  useEffect(() => {
-    const handleContextMenuCapture = (e: MouseEvent) => {
-      // If panning is active or if we are clicking inside the container, block it
-      if (isPanning || (containerRef.current && containerRef.current.contains(e.target as Node))) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-    // Use capture to stop it before the browser triggers the menu
-    window.addEventListener('contextmenu', handleContextMenuCapture, { capture: true });
-    return () => window.removeEventListener('contextmenu', handleContextMenuCapture, { capture: true });
-  }, [isPanning]);
 
   // Handle Margin Dragging
   useEffect(() => {
@@ -522,9 +505,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     }
   }, [triggerFitCounter, fitToScreen]);
 
-  const handleZoomIn = () => setZoom(zoom + 0.1);
-  const handleZoomOut = () => setZoom(zoom - 0.1);
-
   // Helper to get clamped canvas coordinates from screen coordinates
   const getClampedCoords = useCallback((clientX: number, clientY: number) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
@@ -672,89 +652,86 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
           lastPosRef.current = coords;
           setTransparencyMaskOnly(brushCanvasRef.current.toDataURL());
         }
-      };
+      }
+    };
 
-      const handleGlobalMouseUp = () => {
-        if (isPanning) {
-          setIsPanning(false);
-          panStartRef.current = null;
-          scrollStartRef.current = null;
-          document.body.style.cursor = 'default';
-          return;
-        }
+    const handleGlobalMouseUp = () => {
+      if (isPanning) {
+        setIsPanning(false);
+        panStartRef.current = null;
+        scrollStartRef.current = null;
+        document.body.style.cursor = 'default';
+        return;
+      }
 
-        if (!dragStart || !dragCurrent || !canvasRef.current || !isDragging) {
-          setIsDragging(false);
-          lastPosRef.current = null;
-          return;
-        }
-
-        const canvas = canvasRef.current;
-
-        if (activeTool === 'fill' || activeTool === 'erase') {
-          const img = imageRef.current;
-          if (!img) {
-            setIsDragging(false);
-            return;
-          }
-          const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
-
-          const x1 = Math.min(dragStart.x, dragCurrent.x);
-          const y1 = Math.min(dragStart.y, dragCurrent.y);
-          const x2 = Math.max(dragStart.x, dragCurrent.x);
-          const y2 = Math.max(dragStart.y, dragCurrent.y);
-
-          // Convert drag rect to image-local space
-          const localX1 = (x1 / dpr) - drawX + cropLeft;
-          const localY1 = (y1 / dpr) - drawY + cropTop;
-          const localX2 = (x2 / dpr) - drawX + cropLeft;
-          const localY2 = (y2 / dpr) - drawY + cropTop;
-
-          const width = localX2 - localX1;
-          const height = localY2 - localY1;
-
-          if (width > 0 && height > 0) {
-            const fillCanvas = document.createElement('canvas');
-            fillCanvas.width = img.naturalWidth;
-            fillCanvas.height = img.naturalHeight;
-            const fCtx = fillCanvas.getContext('2d')!;
-
-            const currentImg = activeTool === 'erase' ? transparencyImg : fillMaskImg;
-            if (currentImg) fCtx.drawImage(currentImg, 0, 0);
-
-            fCtx.fillStyle = 'black';
-            fCtx.fillRect(localX1, localY1, width, height);
-
-            if (activeTool === 'erase') {
-              setTransparencyMask(fillCanvas.toDataURL());
-            } else {
-              setManualFillMask(fillCanvas.toDataURL());
-            }
-            toast({ title: activeTool === 'erase' ? "Área borrada" : "Área rellenada" });
-            didJustDragRef.current = true;
-          } else {
-            didJustDragRef.current = false;
-          }
-        } else if (activeTool === 'brush_erase') {
-          commitTransparencyHistory();
-          toast({ title: "Borrado completado" });
-          didJustDragRef.current = true;
-        }
-
+      if (!dragStart || !dragCurrent || !canvasRef.current || !isDragging) {
         setIsDragging(false);
-        setDragStart(null);
-        setDragCurrent(null);
         lastPosRef.current = null;
-        brushCanvasRef.current = null;
-      };
+        return;
+      }
 
-      window.addEventListener('mousemove', handleGlobalMouseMove);
-      window.addEventListener('mouseup', handleGlobalMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleGlobalMouseMove);
-        window.removeEventListener('mouseup', handleGlobalMouseUp);
-      };
-    }, [isDragging, isPanning, dragStart, dragCurrent, fillMaskImg, transparencyImg, getClampedCoords, setManualFillMask, setTransparencyMask, setTransparencyMaskOnly, commitTransparencyHistory, activeTool, brushSize]);
+      const img = imageRef.current;
+      if (!img) return;
+
+      if (activeTool === 'fill' || activeTool === 'erase') {
+        const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
+
+        const x1 = Math.min(dragStart.x, dragCurrent.x);
+        const y1 = Math.min(dragStart.y, dragCurrent.y);
+        const x2 = Math.max(dragStart.x, dragCurrent.x);
+        const y2 = Math.max(dragStart.y, dragCurrent.y);
+
+        // Convert drag rect to image-local space
+        const localX1 = (x1 / dpr) - drawX + cropLeft;
+        const localY1 = (y1 / dpr) - drawY + cropTop;
+        const localX2 = (x2 / dpr) - drawX + cropLeft;
+        const localY2 = (y2 / dpr) - drawY + cropTop;
+
+        const width = localX2 - localX1;
+        const height = localY2 - localY1;
+
+        if (width > 0 && height > 0) {
+          const fillCanvas = document.createElement('canvas');
+          fillCanvas.width = img.naturalWidth;
+          fillCanvas.height = img.naturalHeight;
+          const fCtx = fillCanvas.getContext('2d')!;
+
+          const currentImg = activeTool === 'erase' ? transparencyImg : fillMaskImg;
+          if (currentImg) fCtx.drawImage(currentImg, 0, 0);
+
+          fCtx.fillStyle = 'black';
+          fCtx.fillRect(localX1, localY1, width, height);
+
+          if (activeTool === 'erase') {
+            setTransparencyMask(fillCanvas.toDataURL());
+          } else {
+            setManualFillMask(fillCanvas.toDataURL());
+          }
+          toast({ title: activeTool === 'erase' ? "Área borrada" : "Área rellenada" });
+          didJustDragRef.current = true;
+        } else {
+          didJustDragRef.current = false;
+        }
+      } else if (activeTool === 'brush_erase') {
+        commitTransparencyHistory();
+        toast({ title: "Borrado completado" });
+        didJustDragRef.current = true;
+      }
+
+      setIsDragging(false);
+      setDragStart(null);
+      setDragCurrent(null);
+      lastPosRef.current = null;
+      brushCanvasRef.current = null;
+    };
+
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isDragging, isPanning, dragStart, dragCurrent, fillMaskImg, transparencyImg, getClampedCoords, setManualFillMask, setTransparencyMask, setTransparencyMaskOnly, commitTransparencyHistory, activeTool, brushSize]);
 
   // Track mouse position for the brush preview even when not dragging
   useEffect(() => {
@@ -806,9 +783,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     const data = imageData.data;
 
     // ─── Flood Fill / Erase Logic ──────────────────────────────────────────
-    // Since the outline is now drawn directly on the canvas, we can use the 
-    // actual alpha values (data[i*4 + 3]) as the boundaries.
-    const wallThreshold = 30; // Alpha > 30 is considered a wall/content
+    const wallThreshold = 30;
 
     const tempFillCanvas = document.createElement('canvas');
     tempFillCanvas.width = width;
@@ -830,7 +805,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
       let isMatch = false;
       if (activeTool === 'fill') {
-        // Wall = any pixel with alpha > wallThreshold (includes image + outline)
         isMatch = data[idx * 4 + 3] <= wallThreshold;
       } else {
         const pxIdx = idx * 4;
@@ -854,7 +828,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     const img = imageRef.current;
     if (!img) return;
 
-    // Combine visual mask mapped back into image-local space
     const fillCanvas = document.createElement('canvas');
     fillCanvas.width = img.naturalWidth;
     fillCanvas.height = img.naturalHeight;
@@ -865,7 +838,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       fCtx.drawImage(currentImg, 0, 0);
     }
 
-    // Map the temporary visual mask to the image coordinates
     const { drawX, drawY, cropLeft, cropTop, logicalWidth, logicalHeight } = renderParamsRef.current;
     fCtx.drawImage(
       tempFillCanvas,
@@ -885,14 +857,13 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
   if (!originalImage) return null;
 
-  // Calculate sizes for React style to prevent stretching
-  const cropLeft = Math.max(0, -padding.left);
-  const cropTop = Math.max(0, -padding.top);
-  const cropRight = Math.max(0, -padding.right);
-  const cropBottom = Math.max(0, -padding.bottom);
+  const cropLeftNum = Math.max(0, -padding.left);
+  const cropTopNum = Math.max(0, -padding.top);
+  const cropRightNum = Math.max(0, -padding.right);
+  const cropBottomNum = Math.max(0, -padding.bottom);
 
-  const actualImgWidth = Math.max(0, imageWidth - cropLeft - cropRight);
-  const actualImgHeight = Math.max(0, imageHeight - cropTop - cropBottom);
+  const actualImgWidth = Math.max(0, imageWidth - cropLeftNum - cropRightNum);
+  const actualImgHeight = Math.max(0, imageHeight - cropTopNum - cropBottomNum);
 
   const extraH = Math.max(0, padding.left) + Math.max(0, padding.right);
   const extraV = Math.max(0, padding.top) + Math.max(0, padding.bottom);
@@ -914,7 +885,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
         onMouseDown={handleMouseDown}
         className="w-max min-w-full h-max min-h-full flex items-center justify-center p-4 sm:p-8"
       >
-        {/* Background wrapper — checkerboard when no outline, solid theme color when outline is active */}
         <div
           className="relative rounded-sm shadow-2xl flex-shrink-0"
           style={{
@@ -922,13 +892,11 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
             height: canvasDisplayHeight > 0 ? `${canvasDisplayHeight}px` : 'auto',
             ...(outlineWidth > 0
               ? {
-                // Solid background matching the app's dark theme
                 backgroundColor: 'hsl(var(--background))',
                 outline: '1px dashed hsl(var(--border))',
                 outlineOffset: '2px',
               }
               : {
-                // Checkerboard for transparency preview (no outline)
                 backgroundColor: '#e0e0e0',
                 backgroundImage: `linear-gradient(45deg, #f0f0f0 25%, transparent 25%),
                                    linear-gradient(-45deg, #f0f0f0 25%, transparent 25%),
@@ -939,7 +907,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               }),
           }}
         >
-          {/* Canvas is transparent itself; we draw original + fills + high-fidelity outline directly onto it */}
           <canvas
             ref={canvasRef}
             onClick={handleCanvasClick}
@@ -956,20 +923,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               background: 'transparent',
             }}
           />
-          {isDragging && dragStart && dragCurrent && activeTool !== 'brush_erase' && (
-            <div
-              className="absolute bg-indigo-500/40 ring-1 ring-indigo-600 shadow-[0_0_0_1px_rgba(255,255,255,0.5)] pointer-events-none"
-              style={{
-                left: Math.min(dragStart.x, dragCurrent.x) / (canvasRef.current?.width || 1) * 100 + '%',
-                top: Math.min(dragStart.y, dragCurrent.y) / (canvasRef.current?.height || 1) * 100 + '%',
-                width: Math.abs(dragCurrent.x - dragStart.x) / (canvasRef.current?.width || 1) * 100 + '%',
-                height: Math.abs(dragCurrent.y - dragStart.y) / (canvasRef.current?.height || 1) * 100 + '%',
-                boxSizing: 'border-box'
-              }}
-            />
-          )}
 
-          {/* Brush Preview Circle */}
           {activeTool === 'brush_erase' && mousePos && (
             <div
               className="fixed pointer-events-none border border-white/50 bg-white/20 rounded-full z-[100] shadow-[0_0_0_1px_rgba(0,0,0,0.3)]"
@@ -982,6 +936,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               }}
             />
           )}
+
           {isProcessing && (
             <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center rounded-sm">
               <div className="flex flex-col items-center gap-2">
@@ -993,11 +948,9 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
             </div>
           )}
 
-          {/* Margin draggable edges */}
           {activeTool === 'adjust_margin' && (
             <>
               <div className="absolute inset-0 border border-blue-500/50 pointer-events-none" />
-              {/* TOP */}
               <div
                 className="absolute top-0 left-0 right-0 h-4 -mt-2 cursor-ns-resize z-50 flex items-center justify-center group"
                 onMouseDown={(e) => {
@@ -1008,7 +961,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               >
                 <div className="w-12 h-1.5 bg-blue-500 rounded-full opacity-50 group-hover:opacity-100" />
               </div>
-              {/* BOTTOM */}
               <div
                 className="absolute bottom-0 left-0 right-0 h-4 -mb-2 cursor-ns-resize z-50 flex items-center justify-center group"
                 onMouseDown={(e) => {
@@ -1019,7 +971,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               >
                 <div className="w-12 h-1.5 bg-blue-500 rounded-full opacity-50 group-hover:opacity-100" />
               </div>
-              {/* LEFT */}
               <div
                 className="absolute left-0 top-0 bottom-0 w-4 -ml-2 cursor-ew-resize z-50 flex items-center justify-center group"
                 onMouseDown={(e) => {
@@ -1030,7 +981,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               >
                 <div className="w-1.5 h-12 bg-blue-500 rounded-full opacity-50 group-hover:opacity-100" />
               </div>
-              {/* RIGHT */}
               <div
                 className="absolute right-0 top-0 bottom-0 w-4 -mr-2 cursor-ew-resize z-50 flex items-center justify-center group"
                 onMouseDown={(e) => {
@@ -1043,7 +993,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               </div>
             </>
           )}
-
         </div>
       </div>
     </div>

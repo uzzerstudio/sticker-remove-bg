@@ -747,16 +747,13 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     // actual alpha values (data[i*4 + 3]) as the boundaries.
     const wallThreshold = 30; // Alpha > 30 is considered a wall/content
 
-    const fillCanvas = document.createElement('canvas');
-    fillCanvas.width = width;
-    fillCanvas.height = height;
-    const fCtx = fillCanvas.getContext('2d')!;
+    const tempFillCanvas = document.createElement('canvas');
+    tempFillCanvas.width = width;
+    tempFillCanvas.height = height;
+    const tempFCtx = tempFillCanvas.getContext('2d')!;
+    const tempFData = tempFCtx.createImageData(width, height);
+    const fPixels = tempFData.data;
 
-    const currentImg = activeTool === 'erase' ? transparencyImg : fillMaskImg;
-    if (currentImg) fCtx.drawImage(currentImg, 0, 0);
-
-    const fData = fCtx.getImageData(0, 0, width, height);
-    const fPixels = fData.data;
     const stack: [number, number][] = [[x, y]];
     const visited = new Uint8Array(width * height);
     const tolerance = 48;
@@ -789,7 +786,30 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       }
     }
 
-    fCtx.putImageData(fData, 0, 0);
+    tempFCtx.putImageData(tempFData, 0, 0);
+
+    const img = imageRef.current;
+    if (!img) return;
+
+    // Combine visual mask mapped back into image-local space
+    const fillCanvas = document.createElement('canvas');
+    fillCanvas.width = img.naturalWidth;
+    fillCanvas.height = img.naturalHeight;
+    const fCtx = fillCanvas.getContext('2d')!;
+
+    const currentImg = activeTool === 'erase' ? transparencyImg : fillMaskImg;
+    if (currentImg) {
+      fCtx.drawImage(currentImg, 0, 0);
+    }
+
+    // Map the temporary visual mask to the image coordinates
+    const { drawX, drawY, cropLeft, cropTop, logicalWidth, logicalHeight } = renderParamsRef.current;
+    fCtx.drawImage(
+      tempFillCanvas,
+      0, 0, width, height,
+      cropLeft - drawX, cropTop - drawY, logicalWidth, logicalHeight
+    );
+
     if (activeTool === 'erase') {
       setTransparencyMask(fillCanvas.toDataURL());
       toast({ title: "Color borrado" });

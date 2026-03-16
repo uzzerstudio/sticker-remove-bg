@@ -207,6 +207,9 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const touchFocalPointRef = useRef<{ x: number; y: number } | null>(null);
   const touchScreenMidpointRef = useRef<{ x: number; y: number } | null>(null);
 
+  // Source tracking to ignore synthetic mouse events on mobile
+  const dragSourceRef = useRef<'mouse' | 'touch' | null>(null);
+
   // Replaces the middle-click block with a global context menu block when panning
   useEffect(() => {
     const handleContextMenuCapture = (e: MouseEvent) => {
@@ -677,6 +680,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       const scrollContainer = containerRef.current?.parentElement;
       if (scrollContainer) {
         setIsPanning(true);
+        dragSourceRef.current = 'mouse';
         panStartRef.current = { x: e.clientX, y: e.clientY };
         scrollStartRef.current = { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop };
       }
@@ -690,50 +694,49 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       const scrollContainer = containerRef.current?.parentElement;
       if (scrollContainer) {
         setIsPanning(true);
+        dragSourceRef.current = 'mouse';
         panStartRef.current = { x: e.clientX, y: e.clientY };
         scrollStartRef.current = { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop };
       }
       return;
     }
 
-    const coords = getClampedCoords(e.clientX, e.clientY);
-    setIsDragging(true);
-    setDragStart(coords);
-    setDragCurrent(coords);
-    lastPosRef.current = coords;
+    if (e.button === 0) {
+      const coords = getClampedCoords(e.clientX, e.clientY);
+      setIsDragging(true);
+      dragSourceRef.current = 'mouse';
+      setDragStart(coords);
+      setDragCurrent(coords);
+      lastPosRef.current = coords;
 
-    if (activeTool === 'brush_erase') {
-      const img = imageRef.current;
-      if (!img) return;
-      const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
+      if (activeTool === 'brush_erase') {
+        const img = imageRef.current;
+        if (!img) return;
+        const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
 
-      const offCanvas = document.createElement('canvas');
-      offCanvas.width = img.naturalWidth;
-      offCanvas.height = img.naturalHeight;
-      const bCtx = offCanvas.getContext('2d')!;
-      if (transparencyImg) {
-        bCtx.drawImage(transparencyImg, 0, 0);
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = img.naturalWidth;
+        offCanvas.height = img.naturalHeight;
+        const bCtx = offCanvas.getContext('2d')!;
+        if (transparencyImg) {
+          bCtx.drawImage(transparencyImg, 0, 0);
+        }
+
+        const localX = (coords.x / dpr) - drawX + cropLeft;
+        const localY = (coords.y / dpr) - drawY + cropTop;
+
+        bCtx.lineJoin = 'round';
+        bCtx.lineCap = 'round';
+        bCtx.lineWidth = brushSize;
+        bCtx.strokeStyle = 'black';
+        bCtx.beginPath();
+        bCtx.moveTo(localX, localY);
+        bCtx.lineTo(localX, localY);
+        bCtx.stroke();
+
+        brushCanvasRef.current = offCanvas;
+        setTransparencyMask(offCanvas.toDataURL());
       }
-
-      // Map coords to image-local space
-      const localX = (coords.x / dpr) - drawX + cropLeft;
-      const localY = (coords.y / dpr) - drawY + cropTop;
-
-      // Initial point
-      bCtx.lineJoin = 'round';
-      bCtx.lineCap = 'round';
-      bCtx.lineWidth = brushSize;
-      bCtx.strokeStyle = 'black';
-      bCtx.beginPath();
-      bCtx.moveTo(localX, localY);
-      bCtx.lineTo(localX, localY);
-      bCtx.stroke();
-
-      brushCanvasRef.current = offCanvas;
-      setTransparencyMask(offCanvas.toDataURL());
-    }
-
-    if (e.button !== 2) {
       e.preventDefault();
     }
   };
@@ -743,13 +746,14 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
     const touch = e.touches[0];
     const clientX = touch.clientX;
-    const clientY = isMobile ? touch.clientY - TOUCH_OFFSET_Y : touch.clientY;
+    const clientY = isMobile && activeTool === 'brush_erase' ? touch.clientY - TOUCH_OFFSET_Y : touch.clientY;
 
     // If activeTool is 'adjust_margin', treat single touch as Panning instead of Area selection
     if (activeTool === 'adjust_margin') {
       const scrollContainer = containerRef.current?.parentElement;
       if (scrollContainer) {
         setIsPanning(true);
+        dragSourceRef.current = 'touch';
         panStartRef.current = { x: clientX, y: clientY };
         scrollStartRef.current = { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop };
       }
@@ -758,6 +762,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
     const coords = getClampedCoords(clientX, clientY);
     setIsDragging(true);
+    dragSourceRef.current = 'touch';
     setDragStart(coords);
     setDragCurrent(coords);
     lastPosRef.current = coords;
@@ -793,7 +798,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       brushCanvasRef.current = offCanvas;
       setTransparencyMask(offCanvas.toDataURL());
     }
-    // Prevent scrolling while drawing
+    // Prevent scrolling and synthetic mouse events
     e.preventDefault();
   };
 
@@ -802,12 +807,25 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
     const handleGlobalMouseMove = (e: MouseEvent | TouchEvent) => {
       const isTouch = 'touches' in e;
-      const clientX = isTouch ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
-      let clientY = isTouch ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
 
-      // Apply offset on mobile for brush tools
-      if (isTouch && activeTool === 'brush_erase') {
-        clientY -= TOUCH_OFFSET_Y;
+      // CRITICAL: Ignore synthetic mouse events on mobile if we started with touch
+      // and ignore touch events if we started with mouse
+      if (!isTouch && dragSourceRef.current === 'touch') return;
+      if (isTouch && dragSourceRef.current === 'mouse') return;
+
+      let clientX, clientY;
+      if (isTouch) {
+        const touch = (e as TouchEvent).touches[0];
+        if (!touch) return;
+        clientX = touch.clientX;
+        clientY = touch.clientY;
+        // Apply offset ONLY if we are in a touch-drag and using brush
+        if (dragSourceRef.current === 'touch' && activeTool === 'brush_erase') {
+          clientY -= TOUCH_OFFSET_Y;
+        }
+      } else {
+        clientX = (e as MouseEvent).clientX;
+        clientY = (e as MouseEvent).clientY;
       }
 
       if (isPanning && panStartRef.current && scrollStartRef.current) {
@@ -857,6 +875,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     const handleGlobalMouseUp = () => {
       if (isPanning) {
         setIsPanning(false);
+        dragSourceRef.current = null;
         panStartRef.current = null;
         scrollStartRef.current = null;
         document.body.style.cursor = 'default';
@@ -865,6 +884,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
       if (!dragStart || !dragCurrent || !canvasRef.current || !isDragging) {
         setIsDragging(false);
+        dragSourceRef.current = null;
         lastPosRef.current = null;
         return;
       }
@@ -918,6 +938,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       }
 
       setIsDragging(false);
+      dragSourceRef.current = null;
       setDragStart(null);
       setDragCurrent(null);
       lastPosRef.current = null;
@@ -928,14 +949,17 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     window.addEventListener('mouseup', handleGlobalMouseUp);
     window.addEventListener('touchmove', handleGlobalMouseMove, { passive: false });
     window.addEventListener('touchend', handleGlobalMouseUp);
+    window.addEventListener('touchcancel', handleGlobalMouseUp);
 
     return () => {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
       window.removeEventListener('touchmove', handleGlobalMouseMove);
       window.removeEventListener('touchend', handleGlobalMouseUp);
+      window.removeEventListener('touchcancel', handleGlobalMouseUp);
     };
   }, [isDragging, isPanning, dragStart, dragCurrent, fillMaskImg, transparencyImg, getClampedCoords, setManualFillMask, setTransparencyMask, setTransparencyMaskOnly, commitTransparencyHistory, activeTool, brushSize]);
+
 
   // Track mouse position for the brush preview even when not dragging
   useEffect(() => {

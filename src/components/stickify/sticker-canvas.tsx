@@ -924,7 +924,18 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               background: 'transparent',
             }}
           />
-
+          {isDragging && dragStart && dragCurrent && activeTool !== 'brush_erase' && (
+            <div
+              className="absolute bg-indigo-500/40 ring-1 ring-indigo-600 shadow-[0_0_0_1px_rgba(255,255,255,0.5)] pointer-events-none"
+              style={{
+                left: Math.min(dragStart.x, dragCurrent.x) / (canvasRef.current?.width || 1) * 100 + '%',
+                top: Math.min(dragStart.y, dragCurrent.y) / (canvasRef.current?.height || 1) * 100 + '%',
+                width: Math.abs(dragCurrent.x - dragStart.x) / (canvasRef.current?.width || 1) * 100 + '%',
+                height: Math.abs(dragCurrent.y - dragStart.y) / (canvasRef.current?.height || 1) * 100 + '%',
+                boxSizing: 'border-box'
+              }}
+            />
+          )}
           {activeTool === 'brush_erase' && mousePos && (
             <div
               className="fixed pointer-events-none border border-white/50 bg-white/20 rounded-full z-[100] shadow-[0_0_0_1px_rgba(0,0,0,0.3)]"

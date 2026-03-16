@@ -192,6 +192,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   // Mobile Pinch-to-Zoom refs
   const touchDistStartRef = useRef<number | null>(null);
   const touchZoomStartRef = useRef<number | null>(null);
+  const touchFocalPointRef = useRef<{ x: number; y: number } | null>(null);
+  const touchScreenMidpointRef = useRef<{ x: number; y: number } | null>(null);
 
   // Replaces the middle-click block with a global context menu block when panning
   useEffect(() => {
@@ -567,26 +569,69 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       return Math.sqrt(dx * dx + dy * dy);
     };
 
+    const getMidpoint = (touches: TouchList) => {
+      return {
+        x: (touches[0].clientX + touches[1].clientX) / 2,
+        y: (touches[0].clientY + touches[1].clientY) / 2,
+      };
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         touchDistStartRef.current = getDistance(e.touches);
-        touchZoomStartRef.current = useStickerStore.getState().zoom;
+        const state = useStickerStore.getState();
+        touchZoomStartRef.current = state.zoom;
+
+        const midpoint = getMidpoint(e.touches);
+        const scrollContainer = containerRef.current?.parentElement;
+        if (scrollContainer) {
+          const rect = scrollContainer.getBoundingClientRect();
+          // Content position relative to the scroll container's top-left
+          const contentX = midpoint.x - rect.left + scrollContainer.scrollLeft;
+          const contentY = midpoint.y - rect.top + scrollContainer.scrollTop;
+
+          // Store unzoomed content position
+          touchFocalPointRef.current = {
+            x: contentX / state.zoom,
+            y: contentY / state.zoom
+          };
+          touchScreenMidpointRef.current = midpoint;
+        }
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && touchDistStartRef.current !== null && touchZoomStartRef.current !== null) {
+      if (e.touches.length === 2 && touchDistStartRef.current !== null &&
+        touchZoomStartRef.current !== null && touchFocalPointRef.current !== null &&
+        touchScreenMidpointRef.current !== null) {
+
         e.preventDefault(); // Stop page scroll while pinching
         const currentDist = getDistance(e.touches);
         const ratio = currentDist / touchDistStartRef.current;
         const newZoom = Math.max(0.1, Math.min(5, touchZoomStartRef.current * ratio));
-        useStickerStore.getState().setZoom(newZoom);
+
+        const state = useStickerStore.getState();
+        state.setZoom(newZoom);
+
+        // Adjust scroll to keep focal point at the same screen position
+        const scrollContainer = containerRef.current?.parentElement;
+        if (scrollContainer) {
+          const rect = scrollContainer.getBoundingClientRect();
+          const focal = touchFocalPointRef.current;
+          const mid = touchScreenMidpointRef.current;
+
+          // New scroll position = (focalPoint * newZoom) - (screenPosition - containerTopLeft)
+          scrollContainer.scrollLeft = (focal.x * newZoom) - (mid.x - rect.left);
+          scrollContainer.scrollTop = (focal.y * newZoom) - (mid.y - rect.top);
+        }
       }
     };
 
     const handleTouchEnd = () => {
       touchDistStartRef.current = null;
       touchZoomStartRef.current = null;
+      touchFocalPointRef.current = null;
+      touchScreenMidpointRef.current = null;
     };
 
     container.addEventListener('touchstart', handleTouchStart, { passive: true });

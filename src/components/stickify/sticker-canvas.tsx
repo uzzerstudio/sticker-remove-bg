@@ -842,11 +842,11 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       <div
         ref={containerRef}
         onMouseDown={handleMouseDown}
-        className="min-w-full min-h-full flex items-center justify-center p-2 sm:p-4"
+        className="w-max min-w-full h-max min-h-full flex items-center justify-center p-4 sm:p-8"
       >
         {/* Background wrapper — checkerboard when no outline, solid theme color when outline is active */}
         <div
-          className="relative rounded-sm shadow-2xl"
+          className="relative rounded-sm shadow-2xl flex-shrink-0"
           style={{
             width: canvasDisplayWidth > 0 ? `${canvasDisplayWidth}px` : 'auto',
             height: canvasDisplayHeight > 0 ? `${canvasDisplayHeight}px` : 'auto',

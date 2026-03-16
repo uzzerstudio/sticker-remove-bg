@@ -673,6 +673,17 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
     if (activeTool === 'none' || !canvasRef.current) return;
 
+    // If activeTool is 'adjust_margin', treat left click as Panning instead of Area selection
+    if (activeTool === 'adjust_margin' && e.button === 0) {
+      const scrollContainer = containerRef.current?.parentElement;
+      if (scrollContainer) {
+        setIsPanning(true);
+        panStartRef.current = { x: e.clientX, y: e.clientY };
+        scrollStartRef.current = { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop };
+      }
+      return;
+    }
+
     const coords = getClampedCoords(e.clientX, e.clientY);
     setIsDragging(true);
     setDragStart(coords);
@@ -719,6 +730,18 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     if (activeTool === 'none' || !canvasRef.current || e.touches.length !== 1) return;
 
     const touch = e.touches[0];
+
+    // If activeTool is 'adjust_margin', treat single touch as Panning instead of Area selection
+    if (activeTool === 'adjust_margin') {
+      const scrollContainer = containerRef.current?.parentElement;
+      if (scrollContainer) {
+        setIsPanning(true);
+        panStartRef.current = { x: touch.clientX, y: touch.clientY };
+        scrollStartRef.current = { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop };
+      }
+      return;
+    }
+
     const coords = getClampedCoords(touch.clientX, touch.clientY);
     setIsDragging(true);
     setDragStart(coords);
@@ -765,7 +788,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       const clientX = isTouch ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
       const clientY = isTouch ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
 
-      if (isPanning && panStartRef.current && scrollStartRef.current && !isTouch) {
+      if (isPanning && panStartRef.current && scrollStartRef.current) {
         const scrollContainer = containerRef.current?.parentElement;
         if (scrollContainer) {
           const dx = clientX - panStartRef.current.x;
@@ -773,6 +796,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
           // Inverted scroll to mimic mobile "pulling the content"
           scrollContainer.scrollLeft = scrollStartRef.current.left - dx;
           scrollContainer.scrollTop = scrollStartRef.current.top - dy;
+          if (isTouch) e.preventDefault(); // Stop mobile scroll
         }
         return;
       }

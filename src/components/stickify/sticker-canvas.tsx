@@ -559,9 +559,9 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Middle click (button 1)
     if (e.button === 1) {
       e.preventDefault();
+      e.stopPropagation();
       const scrollContainer = containerRef.current?.parentElement;
       if (scrollContainer) {
         setIsPanning(true);
@@ -610,8 +610,21 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       setTransparencyMask(offCanvas.toDataURL());
     }
 
-    e.preventDefault();
+    if (e.button !== 1) {
+      e.preventDefault();
+    }
   };
+
+  // Aggressive block of browser autoscroll (button 1)
+  useEffect(() => {
+    const handleCaptureMouseDown = (e: MouseEvent) => {
+      if (e.button === 1) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('mousedown', handleCaptureMouseDown, { capture: true });
+    return () => window.removeEventListener('mousedown', handleCaptureMouseDown, { capture: true });
+  }, []);
 
   useEffect(() => {
     if (!isDragging && !isPanning) return;

@@ -912,8 +912,9 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
             onClick={handleCanvasClick}
             className={cn(
               "absolute inset-0",
-              activeTool === 'brush_erase' ? "cursor-none" :
-                (activeTool === 'fill' || activeTool === 'erase') ? "cursor-crosshair" : "cursor-default"
+              isPanning ? "cursor-grabbing" :
+                activeTool === 'brush_erase' ? "cursor-none" :
+                  (activeTool === 'fill' || activeTool === 'erase') ? "cursor-crosshair" : "cursor-default"
             )}
             style={{
               width: '100%',

@@ -674,6 +674,9 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Block synthetic mouse events on mobile if already touching
+    if (dragSourceRef.current === 'touch') return;
+
     // Right click (button 2) for Hand Tool / Panning
     if (e.button === 2) {
       e.preventDefault();
@@ -937,12 +940,14 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
         didJustDragRef.current = true;
       }
 
+      const wasTouch = dragSourceRef.current === 'touch';
       setIsDragging(false);
       dragSourceRef.current = null;
       setDragStart(null);
       setDragCurrent(null);
       lastPosRef.current = null;
       brushCanvasRef.current = null;
+      if (wasTouch) setMousePos(null);
     };
 
     window.addEventListener('mousemove', handleGlobalMouseMove);
@@ -963,7 +968,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
   // Track mouse position for the brush preview even when not dragging
   useEffect(() => {
-    if (activeTool !== 'brush_erase') {
+    if (activeTool !== 'brush_erase' || isMobile) {
       setMousePos(null);
       return;
     }
@@ -980,7 +985,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [activeTool]);
+  }, [activeTool, isMobile]);
+
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (didJustDragRef.current) {

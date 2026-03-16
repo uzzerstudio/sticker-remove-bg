@@ -115,12 +115,18 @@ function createOutline(
 
   for (let i = 0; i < w * h; i++) {
     const alpha = b3[i];
-    if (alpha <= 0) continue;
+    // Threshold with feColorMatrix(20 -10) equivalent to harden the edges
+    const a = Math.round(Math.min(1, Math.max(0, 20 * (alpha / 255) - 10)) * 255);
+    if (a <= 0) continue;
+
+    // For inner outlines (dilation of outside), only draw where it was originally transparent
+    if (isInner && pixels[i * 4 + 3] < 128) continue;
+
     const idx = i * 4;
     outBinary[idx] = rC;
     outBinary[idx + 1] = gC;
     outBinary[idx + 2] = bC;
-    outBinary[idx + 3] = alpha;
+    outBinary[idx + 3] = a;
   }
 
   outCtx.putImageData(outlineData, 0, 0);

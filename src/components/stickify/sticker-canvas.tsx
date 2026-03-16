@@ -178,7 +178,18 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     undoImage,
     redoImage,
     setBrushSize,
+    processedImageHistory,
+    processedImageIndex,
+    manualFillHistory,
+    manualFillIndex,
+    transparencyHistory,
+    transparencyIndex,
   } = useStickerStore();
+
+  const canUndo = transparencyIndex > 0 || manualFillIndex > 0 || processedImageIndex > 0;
+  const canRedo = transparencyIndex < transparencyHistory.length - 1 ||
+    manualFillIndex < manualFillHistory.length - 1 ||
+    processedImageIndex < processedImageHistory.length - 1;
 
   const [isMobile, setIsMobile] = useState(false);
   const [fillMaskImg, setFillMaskImg] = useState<HTMLImageElement | null>(null);
@@ -1174,29 +1185,45 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
           )}
 
           {/* Floating Undo/Redo for Mobile (Top Center) */}
-          {isMobile && (
+          {isMobile && (canUndo || canRedo) && (
             <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex gap-2 bg-background/80 backdrop-blur-md border border-border p-1.5 rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 duration-300">
-              <button
-                onClick={() => {
-                  if (activeTool === 'brush_erase' || activeTool === 'erase') undoErase();
-                  else if (activeTool === 'fill') undo();
-                  else undoImage();
-                }}
-                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-secondary active:scale-95 transition-all text-foreground"
-              >
-                <RotateCcw className="w-5 h-5" />
-              </button>
-              <div className="w-px h-6 bg-border self-center" />
-              <button
-                onClick={() => {
-                  if (activeTool === 'brush_erase' || activeTool === 'erase') redoErase();
-                  else if (activeTool === 'fill') redo();
-                  else redoImage();
-                }}
-                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-secondary active:scale-95 transition-all text-foreground"
-              >
-                <RotateCcw className="w-5 h-5 scale-x-[-1]" />
-              </button>
+              {canUndo && (
+                <button
+                  onClick={() => {
+                    if (activeTool === 'brush_erase' || activeTool === 'erase') undoErase();
+                    else if (activeTool === 'fill') undo();
+                    else if (activeTool === 'none' && processedImageIndex > 0) undoImage();
+                    else {
+                      // Smart fallback: undo whatever has history
+                      if (transparencyIndex > 0) undoErase();
+                      else if (manualFillIndex > 0) undo();
+                      else if (processedImageIndex > 0) undoImage();
+                    }
+                  }}
+                  className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-secondary active:scale-95 transition-all text-foreground"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
+              )}
+              {canUndo && canRedo && <div className="w-px h-6 bg-border self-center" />}
+              {canRedo && (
+                <button
+                  onClick={() => {
+                    if (activeTool === 'brush_erase' || activeTool === 'erase') redoErase();
+                    else if (activeTool === 'fill') redo();
+                    else if (activeTool === 'none' && processedImageIndex < processedImageHistory.length - 1) redoImage();
+                    else {
+                      // Smart fallback: redo whatever has history
+                      if (transparencyIndex < transparencyHistory.length - 1) redoErase();
+                      else if (manualFillIndex < manualFillHistory.length - 1) redo();
+                      else if (processedImageIndex < processedImageHistory.length - 1) redoImage();
+                    }
+                  }}
+                  className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-secondary active:scale-95 transition-all text-foreground"
+                >
+                  <RotateCcw className="w-5 h-5 scale-x-[-1]" />
+                </button>
+              )}
             </div>
           )}
 

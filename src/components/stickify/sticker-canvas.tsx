@@ -559,9 +559,9 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1) {
+    // Right click (button 2) for Hand Tool / Panning
+    if (e.button === 2) {
       e.preventDefault();
-      e.stopPropagation();
       const scrollContainer = containerRef.current?.parentElement;
       if (scrollContainer) {
         setIsPanning(true);
@@ -610,21 +610,10 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       setTransparencyMask(offCanvas.toDataURL());
     }
 
-    if (e.button !== 1) {
+    if (e.button !== 2) {
       e.preventDefault();
     }
   };
-
-  // Aggressive block of browser autoscroll (button 1)
-  useEffect(() => {
-    const handleCaptureMouseDown = (e: MouseEvent) => {
-      if (e.button === 1) {
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('mousedown', handleCaptureMouseDown, { capture: true });
-    return () => window.removeEventListener('mousedown', handleCaptureMouseDown, { capture: true });
-  }, []);
 
   useEffect(() => {
     if (!isDragging && !isPanning) return;
@@ -904,6 +893,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
         isPanning ? "cursor-grabbing" : "cursor-default",
         className
       )}
+      onContextMenu={(e) => e.preventDefault()}
     >
       <div
         ref={containerRef}

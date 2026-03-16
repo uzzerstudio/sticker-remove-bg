@@ -704,15 +704,61 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     }
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (activeTool === 'none' || !canvasRef.current || e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
+    const coords = getClampedCoords(touch.clientX, touch.clientY);
+    setIsDragging(true);
+    setDragStart(coords);
+    setDragCurrent(coords);
+    lastPosRef.current = coords;
+
+    if (activeTool === 'brush_erase') {
+      const img = imageRef.current;
+      if (!img) return;
+      const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
+
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = img.naturalWidth;
+      offCanvas.height = img.naturalHeight;
+      const bCtx = offCanvas.getContext('2d')!;
+      if (transparencyImg) {
+        bCtx.drawImage(transparencyImg, 0, 0);
+      }
+
+      const localX = (coords.x / dpr) - drawX + cropLeft;
+      const localY = (coords.y / dpr) - drawY + cropTop;
+
+      bCtx.lineJoin = 'round';
+      bCtx.lineCap = 'round';
+      bCtx.lineWidth = brushSize;
+      bCtx.strokeStyle = 'black';
+      bCtx.beginPath();
+      bCtx.moveTo(localX, localY);
+      bCtx.lineTo(localX, localY);
+      bCtx.stroke();
+
+      brushCanvasRef.current = offCanvas;
+      setTransparencyMask(offCanvas.toDataURL());
+    }
+    // Prevent scrolling while drawing
+    e.preventDefault();
+  };
+
   useEffect(() => {
     if (!isDragging && !isPanning) return;
 
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (isPanning && panStartRef.current && scrollStartRef.current) {
+    const handleGlobalMouseMove = (e: MouseEvent | TouchEvent) => {
+      const isTouch = 'touches' in e;
+      const clientX = isTouch ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = isTouch ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+
+      if (isPanning && panStartRef.current && scrollStartRef.current && !isTouch) {
         const scrollContainer = containerRef.current?.parentElement;
         if (scrollContainer) {
-          const dx = e.clientX - panStartRef.current.x;
-          const dy = e.clientY - panStartRef.current.y;
+          const dx = clientX - panStartRef.current.x;
+          const dy = clientY - panStartRef.current.y;
           // Inverted scroll to mimic mobile "pulling the content"
           scrollContainer.scrollLeft = scrollStartRef.current.left - dx;
           scrollContainer.scrollTop = scrollStartRef.current.top - dy;
@@ -721,9 +767,10 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       }
 
       if (isDragging) {
-        const coords = getClampedCoords(e.clientX, e.clientY);
+        if (isTouch) e.preventDefault(); // Stop mobile scroll
+        const coords = getClampedCoords(clientX, clientY);
         setDragCurrent(coords);
-        setMousePos({ x: e.clientX, y: e.clientY });
+        setMousePos({ x: clientX, y: clientY });
 
         if (activeTool === 'brush_erase' && brushCanvasRef.current) {
           const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
@@ -822,9 +869,14 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
     window.addEventListener('mousemove', handleGlobalMouseMove);
     window.addEventListener('mouseup', handleGlobalMouseUp);
+    window.addEventListener('touchmove', handleGlobalMouseMove, { passive: false });
+    window.addEventListener('touchend', handleGlobalMouseUp);
+
     return () => {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
+      window.removeEventListener('touchmove', handleGlobalMouseMove);
+      window.removeEventListener('touchend', handleGlobalMouseUp);
     };
   }, [isDragging, isPanning, dragStart, dragCurrent, fillMaskImg, transparencyImg, getClampedCoords, setManualFillMask, setTransparencyMask, setTransparencyMaskOnly, commitTransparencyHistory, activeTool, brushSize]);
 
@@ -1005,6 +1057,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
           <canvas
             ref={canvasRef}
             onClick={handleCanvasClick}
+            onTouchStart={handleTouchStart}
             className={cn(
               "absolute inset-0",
               isPanning ? "cursor-grabbing" :

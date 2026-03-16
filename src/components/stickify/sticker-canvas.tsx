@@ -253,6 +253,20 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, undoErase, redoErase, undoImage, redoImage, activeTool, zoom, setZoom, outlineWidth, setOutlineWidth, setActiveTool]);
 
+  // Replaces the middle-click block with a global context menu block when panning
+  useEffect(() => {
+    const handleContextMenuCapture = (e: MouseEvent) => {
+      // If panning is active or if we are clicking inside the container, block it
+      if (isPanning || (containerRef.current && containerRef.current.contains(e.target as Node))) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    // Use capture to stop it before the browser triggers the menu
+    window.addEventListener('contextmenu', handleContextMenuCapture, { capture: true });
+    return () => window.removeEventListener('contextmenu', handleContextMenuCapture, { capture: true });
+  }, [isPanning]);
+
   // Handle Margin Dragging
   useEffect(() => {
     if (!marginDragState.edge) return;

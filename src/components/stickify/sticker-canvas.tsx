@@ -1186,15 +1186,21 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
           {/* Floating Undo/Redo for Mobile (Top Center) */}
           {isMobile && (canUndo || canRedo) && (
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex gap-2 bg-background/80 backdrop-blur-md border border-border p-1.5 rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 duration-300">
+            <div
+              className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex gap-2 bg-background/80 backdrop-blur-md border border-border p-1.5 rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 duration-300"
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
               {canUndo && (
                 <button
-                  onClick={() => {
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     if (activeTool === 'brush_erase' || activeTool === 'erase') undoErase();
                     else if (activeTool === 'fill') undo();
                     else if (activeTool === 'none' && processedImageIndex > 0) undoImage();
                     else {
-                      // Smart fallback: undo whatever has history
                       if (transparencyIndex > 0) undoErase();
                       else if (manualFillIndex > 0) undo();
                       else if (processedImageIndex > 0) undoImage();
@@ -1208,12 +1214,14 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               {canUndo && canRedo && <div className="w-px h-6 bg-border self-center" />}
               {canRedo && (
                 <button
-                  onClick={() => {
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     if (activeTool === 'brush_erase' || activeTool === 'erase') redoErase();
                     else if (activeTool === 'fill') redo();
                     else if (activeTool === 'none' && processedImageIndex < processedImageHistory.length - 1) redoImage();
                     else {
-                      // Smart fallback: redo whatever has history
                       if (transparencyIndex < transparencyHistory.length - 1) redoErase();
                       else if (manualFillIndex < manualFillHistory.length - 1) redo();
                       else if (processedImageIndex < processedImageHistory.length - 1) redoImage();

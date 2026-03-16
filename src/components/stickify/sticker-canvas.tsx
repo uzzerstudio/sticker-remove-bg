@@ -221,6 +221,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
   // Source tracking to ignore synthetic mouse events on mobile
   const dragSourceRef = useRef<'mouse' | 'touch' | null>(null);
+  const lastTouchTimeRef = useRef(0);
 
   // Replaces the middle-click block with a global context menu block when panning
   useEffect(() => {
@@ -615,6 +616,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     };
 
     const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) lastTouchTimeRef.current = Date.now();
       if (e.touches.length === 2) {
         touchDistStartRef.current = getDistance(e.touches);
         const state = useStickerStore.getState();
@@ -672,7 +674,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
       touchScreenMidpointRef.current = null;
     };
 
-    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd);
     container.addEventListener('touchcancel', handleTouchEnd);
@@ -686,8 +688,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Block synthetic mouse events on mobile if already touching
-    if (dragSourceRef.current === 'touch') return;
+    // CRITICAL: Block synthetic mouse events on mobile
+    if (dragSourceRef.current === 'touch' || Date.now() - lastTouchTimeRef.current < 500) return;
 
     // Right click (button 2) for Hand Tool / Panning
     if (e.button === 2) {
@@ -757,6 +759,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    lastTouchTimeRef.current = Date.now();
     if (activeTool === 'none' || !canvasRef.current || e.touches.length !== 1) return;
 
     const touch = e.touches[0];
@@ -822,10 +825,10 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
     const handleGlobalMouseMove = (e: MouseEvent | TouchEvent) => {
       const isTouch = 'touches' in e;
+      if (isTouch) lastTouchTimeRef.current = Date.now();
 
-      // CRITICAL: Ignore synthetic mouse events on mobile if we started with touch
-      // and ignore touch events if we started with mouse
-      if (!isTouch && dragSourceRef.current === 'touch') return;
+      // CRITICAL: Ignore synthetic mouse events on mobile
+      if (!isTouch && (dragSourceRef.current === 'touch' || Date.now() - lastTouchTimeRef.current < 500)) return;
       if (isTouch && dragSourceRef.current === 'mouse') return;
 
       let clientX, clientY;
@@ -986,6 +989,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     }
 
     const handleMouseMove = (e: MouseEvent) => {
+      if (Date.now() - lastTouchTimeRef.current < 500) return;
       setMousePos({ x: e.clientX, y: e.clientY });
     };
 

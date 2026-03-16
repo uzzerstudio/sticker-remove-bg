@@ -189,6 +189,10 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const panStartRef = useRef<{ x: number, y: number } | null>(null);
   const scrollStartRef = useRef<{ left: number, top: number } | null>(null);
 
+  // Mobile Pinch-to-Zoom refs
+  const touchDistStartRef = useRef<number | null>(null);
+  const touchZoomStartRef = useRef<number | null>(null);
+
   // Replaces the middle-click block with a global context menu block when panning
   useEffect(() => {
     const handleContextMenuCapture = (e: MouseEvent) => {
@@ -550,6 +554,52 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  // Mobile Pinch-to-Zoom Logic
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const getDistance = (touches: TouchList) => {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        touchDistStartRef.current = getDistance(e.touches);
+        touchZoomStartRef.current = useStickerStore.getState().zoom;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && touchDistStartRef.current !== null && touchZoomStartRef.current !== null) {
+        e.preventDefault(); // Stop page scroll while pinching
+        const currentDist = getDistance(e.touches);
+        const ratio = currentDist / touchDistStartRef.current;
+        const newZoom = Math.max(0.1, Math.min(5, touchZoomStartRef.current * ratio));
+        useStickerStore.getState().setZoom(newZoom);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      touchDistStartRef.current = null;
+      touchZoomStartRef.current = null;
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('touchcancel', handleTouchEnd);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+    };
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {

@@ -10,6 +10,8 @@ interface StickerCanvasProps {
   className?: string;
 }
 
+const TOUCH_OFFSET_Y = 80; // Pixels to offset the brush upwards on mobile
+
 // createOutline — CPU port of the high-fidelity outline pipeline:
 // Matches the export logic exactly for perfect parity.
 function createOutline(
@@ -174,9 +176,19 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     redoErase,
     undoImage,
     redoImage,
+    setBrushSize,
   } = useStickerStore();
 
+  const [isMobile, setIsMobile] = useState(false);
   const [fillMaskImg, setFillMaskImg] = useState<HTMLImageElement | null>(null);
+
+  // Detect mobile view
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768);
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [transparencyImg, setTransparencyImg] = useState<HTMLImageElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number, y: number } | null>(null);
@@ -730,23 +742,28 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     if (activeTool === 'none' || !canvasRef.current || e.touches.length !== 1) return;
 
     const touch = e.touches[0];
+    const clientX = touch.clientX;
+    const clientY = isMobile ? touch.clientY - TOUCH_OFFSET_Y : touch.clientY;
 
     // If activeTool is 'adjust_margin', treat single touch as Panning instead of Area selection
     if (activeTool === 'adjust_margin') {
       const scrollContainer = containerRef.current?.parentElement;
       if (scrollContainer) {
         setIsPanning(true);
-        panStartRef.current = { x: touch.clientX, y: touch.clientY };
+        panStartRef.current = { x: clientX, y: clientY };
         scrollStartRef.current = { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop };
       }
       return;
     }
 
-    const coords = getClampedCoords(touch.clientX, touch.clientY);
+    const coords = getClampedCoords(clientX, clientY);
     setIsDragging(true);
     setDragStart(coords);
     setDragCurrent(coords);
     lastPosRef.current = coords;
+
+    // Update visual mouse pos for the brush indicator
+    setMousePos({ x: clientX, y: clientY });
 
     if (activeTool === 'brush_erase') {
       const img = imageRef.current;
@@ -786,7 +803,12 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     const handleGlobalMouseMove = (e: MouseEvent | TouchEvent) => {
       const isTouch = 'touches' in e;
       const clientX = isTouch ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
-      const clientY = isTouch ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+      let clientY = isTouch ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+
+      // Apply offset on mobile for brush tools
+      if (isTouch && activeTool === 'brush_erase') {
+        clientY -= TOUCH_OFFSET_Y;
+      }
 
       if (isPanning && panStartRef.current && scrollStartRef.current) {
         const scrollContainer = containerRef.current?.parentElement;
@@ -1119,6 +1141,34 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               }}
             />
           )}
+
+          {/* Floating Brush Size Control for Mobile (Left side) */}
+          {activeTool === 'brush_erase' && isMobile && (
+            <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[200] bg-background/90 backdrop-blur-md border border-border p-4 rounded-2xl shadow-xl flex flex-col items-center gap-4 animate-in fade-in slide-in-from-left-4 duration-300">
+              <div className="flex flex-col items-center gap-2 h-40">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none rotate-180 [writing-mode:vertical-lr]">
+                  {brushSize}px
+                </span>
+                <input
+                  type="range"
+                  min="5"
+                  max="100"
+                  step="1"
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                  className="w-1.5 h-full rounded-lg appearance-none bg-secondary cursor-pointer accent-primary [writing-mode:vertical-lr] cursor-ns-resize"
+                  style={{ direction: 'rtl' }}
+                />
+              </div>
+              <div
+                className="w-8 h-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center pointer-events-none"
+                style={{ width: Math.max(8, brushSize / 2), height: Math.max(8, brushSize / 2) }}
+              >
+                <div className="w-1 h-1 bg-primary rounded-full" />
+              </div>
+            </div>
+          )}
+
           {activeTool === 'brush_erase' && mousePos && (
             <div
               className="fixed pointer-events-none border border-white/50 bg-white/20 rounded-full z-[100] shadow-[0_0_0_1px_rgba(0,0,0,0.3)]"

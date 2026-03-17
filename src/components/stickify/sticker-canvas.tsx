@@ -840,12 +840,13 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     const clientY = isMobile && activeTool === 'brush_erase' ? touch.clientY - TOUCH_OFFSET_Y : touch.clientY;
 
     // If activeTool is 'adjust_margin', treat single touch as Panning instead of Area selection
-    if (activeTool === 'adjust_margin') {
+    // On mobile with brush_erase, touching the canvas is ONLY for panning (not erasing) — use the Erase Handle
+    if (activeTool === 'adjust_margin' || (isMobile && activeTool === 'brush_erase')) {
       const scrollContainer = containerRef.current?.parentElement;
       if (scrollContainer) {
         setIsPanning(true);
         dragSourceRef.current = 'touch';
-        panStartRef.current = { x: clientX, y: clientY };
+        panStartRef.current = { x: touch.clientX, y: touch.clientY };
         scrollStartRef.current = { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop };
       }
       return;
@@ -1302,8 +1303,10 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
               {/* Erase Handle */}
               <div
                 className="w-16 h-16 bg-pink-500 flex items-center justify-center rounded-2xl active:scale-90 transition-all touch-none shadow-lg shadow-pink-500/20"
+                style={{ userSelect: 'none', WebkitUserSelect: 'none' } as React.CSSProperties}
                 onTouchStart={(e) => {
                   e.stopPropagation();
+                  e.preventDefault(); // Prevents long-press text selection popup
                   const touch = e.touches[0];
                   handleStartRef.current = { x: touch.clientX, y: touch.clientY };
                   initialPosRef.current = mousePos || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
@@ -1313,6 +1316,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                 }}
                 onTouchMove={(e) => {
                   e.stopPropagation();
+                  e.preventDefault(); // Prevents scroll and selection while dragging
                   const touch = e.touches[0];
                   const dx = touch.clientX - handleStartRef.current.x;
                   const dy = touch.clientY - handleStartRef.current.y;

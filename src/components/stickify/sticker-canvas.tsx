@@ -386,17 +386,20 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     setTransparencyMaskOnly(brushCanvasRef.current.toDataURL());
   }, [brushSize, getClampedCoords, setTransparencyMaskOnly]);
 
-  // Initialize mousePos to center on mobile when brush tool is active
+  // Center the brush cursor every time the tool is activated on mobile
   useEffect(() => {
-    if (activeTool === 'brush_erase' && isMobile && !mousePos) {
+    if (activeTool === 'brush_erase' && isMobile) {
       const initX = window.innerWidth / 2;
       const initY = (window.innerHeight / 2) - 50;
       setMousePos({ x: initX, y: initY });
-      // Also init canvas position
-      const coords = getClampedCoords(initX, initY);
-      brushCanvasPosRef.current = coords;
+      // Also init canvas position so panning stays consistent
+      setTimeout(() => {
+        const coords = getClampedCoords(initX, initY);
+        brushCanvasPosRef.current = coords;
+      }, 0);
     }
-  }, [activeTool, isMobile, mousePos, getClampedCoords]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool, isMobile]); // Only re-run when tool or device type changes, not on every mousePos update
 
   // When user scrolls the canvas, update mousePos from the stored canvas-space position
   // so the brush mira stays at the same canvas location after panning

@@ -234,6 +234,12 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const initialPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   // Stores brush position in CANVAS coordinates so panning doesn't lose it
   const brushCanvasPosRef = useRef<{ x: number; y: number } | null>(null);
+  // Ref to the controls panel for imperative position updates (avoids React render lag)
+  const controlsPanelRef = useRef<HTMLDivElement | null>(null);
+  const brushSizeForControls = useRef(brushSize);
+  brushSizeForControls.current = brushSize;
+  const zoomForControls = useRef(zoom);
+  zoomForControls.current = zoom;
 
   // Helper to get clamped canvas coordinates from screen coordinates
   const getClampedCoords = useCallback((clientX: number, clientY: number) => {
@@ -922,8 +928,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
         if (!touch) return;
         clientX = touch.clientX;
         clientY = touch.clientY;
-        // Apply offset ONLY if we are in a touch-drag and using brush
-        if (dragSourceRef.current === 'touch' && activeTool === 'brush_erase') {
+        // Apply offset ONLY when drawing (not when panning) and only on mobile
+        if (dragSourceRef.current === 'touch' && activeTool === 'brush_erase' && !isPanning) {
           clientY -= TOUCH_OFFSET_Y;
         }
       } else {
@@ -1305,13 +1311,14 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
             </div>
           )}
 
-          {/* Floating Brush Interaction Handles for Mobile — anchored below brush cursor */}
+          {/* Floating Brush Interaction Handles for Mobile — minimal icons anchored below cursor */}
           {activeTool === 'brush_erase' && isMobile && mousePos && (
             <div
-              className="fixed z-[250] flex gap-4 bg-background/90 backdrop-blur-md p-3 rounded-2xl shadow-2xl border border-border animate-in fade-in duration-300"
+              ref={controlsPanelRef}
+              className="fixed z-[250] flex gap-3"
               style={{
                 left: mousePos.x,
-                top: mousePos.y + (brushSize * zoom / 2) + 20,
+                top: mousePos.y + (brushSize * zoom / 2) + 12,
                 transform: 'translateX(-50%)',
                 pointerEvents: 'auto',
               }}
@@ -1320,7 +1327,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
             >
               {/* Move/Position Handle */}
               <div
-                className="w-16 h-16 bg-secondary flex items-center justify-center rounded-2xl active:scale-90 transition-all touch-none shadow-sm border border-border/50"
+                className="w-10 h-10 bg-background/70 backdrop-blur-sm border border-border/60 flex items-center justify-center rounded-full active:scale-90 transition-transform touch-none shadow-md"
                 onTouchStart={(e) => {
                   e.stopPropagation();
                   const touch = e.touches[0];
@@ -1339,28 +1346,31 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                   setMousePos(newPos);
                   // Track canvas position so panning preserves location
                   brushCanvasPosRef.current = getClampedCoords(newPos.x, newPos.y);
+                  // Update controls panel position imperatively (no React lag)
+                  if (controlsPanelRef.current) {
+                    controlsPanelRef.current.style.left = `${newPos.x}px`;
+                    controlsPanelRef.current.style.top = `${newPos.y + brushSizeForControls.current * zoomForControls.current / 2 + 12}px`;
+                  }
                 }}
               >
-                <Move className="w-8 h-8 text-foreground" />
+                <Move className="w-4 h-4 text-foreground" />
               </div>
 
               {/* Erase Handle */}
               <div
-                className="w-16 h-16 bg-pink-500 flex items-center justify-center rounded-2xl active:scale-90 transition-all touch-none shadow-lg shadow-pink-500/20"
+                className="w-10 h-10 bg-pink-500/90 backdrop-blur-sm flex items-center justify-center rounded-full active:scale-90 transition-transform touch-none shadow-md shadow-pink-500/30"
                 style={{ userSelect: 'none', WebkitUserSelect: 'none' } as React.CSSProperties}
                 onTouchStart={(e) => {
                   e.stopPropagation();
-                  e.preventDefault(); // Prevents long-press text selection popup
+                  e.preventDefault();
                   const touch = e.touches[0];
                   handleStartRef.current = { x: touch.clientX, y: touch.clientY };
                   initialPosRef.current = mousePos || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-
-                  // Start drawing at current Mira pos
                   startBrushStroke(initialPosRef.current.x, initialPosRef.current.y);
                 }}
                 onTouchMove={(e) => {
                   e.stopPropagation();
-                  e.preventDefault(); // Prevents scroll and selection while dragging
+                  e.preventDefault();
                   const touch = e.touches[0];
                   const dx = touch.clientX - handleStartRef.current.x;
                   const dy = touch.clientY - handleStartRef.current.y;
@@ -1369,19 +1379,21 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                     y: initialPosRef.current.y + dy
                   };
                   setMousePos(newPos);
-                  // Track canvas position
                   brushCanvasPosRef.current = getClampedCoords(newPos.x, newPos.y);
-                  // Erase at new Mira pos
+                  // Update controls panel position imperatively (no React lag)
+                  if (controlsPanelRef.current) {
+                    controlsPanelRef.current.style.left = `${newPos.x}px`;
+                    controlsPanelRef.current.style.top = `${newPos.y + brushSizeForControls.current * zoomForControls.current / 2 + 12}px`;
+                  }
                   continueBrushStroke(newPos.x, newPos.y);
                 }}
                 onTouchEnd={(e) => {
                   e.stopPropagation();
-                  // Commit history
                   commitTransparencyHistory();
                   toast({ title: "Borrado completado" });
                 }}
               >
-                <Eraser className="w-8 h-8 text-white" />
+                <Eraser className="w-4 h-4 text-white" />
               </div>
             </div>
           )}

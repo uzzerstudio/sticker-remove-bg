@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback, useState } from 'react';
 import { useStickerStore } from './sticker-store';
 import { useLanguage } from '@/components/language-provider';
 import { toast } from '@/hooks/use-toast';
@@ -386,20 +386,20 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     setTransparencyMaskOnly(brushCanvasRef.current.toDataURL());
   }, [brushSize, getClampedCoords, setTransparencyMaskOnly]);
 
-  // Center the brush cursor every time the tool is activated on mobile
-  useEffect(() => {
+  // Center the brush cursor BEFORE paint every time the tool is activated on mobile
+  // useLayoutEffect fires synchronously before the browser paints — guarantees no missing-cursor frame
+  useLayoutEffect(() => {
     if (activeTool === 'brush_erase' && isMobile) {
       const initX = window.innerWidth / 2;
       const initY = (window.innerHeight / 2) - 50;
       setMousePos({ x: initX, y: initY });
-      // Also init canvas position so panning stays consistent
-      setTimeout(() => {
-        const coords = getClampedCoords(initX, initY);
-        brushCanvasPosRef.current = coords;
-      }, 0);
+      // Canvas coordinate init deferred one frame (canvas may not have dimensions yet)
+      requestAnimationFrame(() => {
+        brushCanvasPosRef.current = getClampedCoords(initX, initY);
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTool, isMobile]); // Only re-run when tool or device type changes, not on every mousePos update
+  }, [activeTool, isMobile]);
 
   // When user scrolls the canvas, update mousePos from the stored canvas-space position
   // so the brush mira stays at the same canvas location after panning

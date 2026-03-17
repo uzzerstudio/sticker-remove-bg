@@ -1196,6 +1196,15 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const canvasDisplayWidth = (actualImgWidth + extraH + outlineWidth * 2) * zoom;
   const canvasDisplayHeight = (actualImgHeight + extraV + outlineWidth * 2) * zoom;
 
+  // Guarantee immediate cursor visibility on mobile: compute effective position at render time.
+  // If mousePos hasn't been set yet but the tool is active on mobile, fall back to screen center.
+  // This means the cursor always appears on the very first frame — no effects/timing needed.
+  const effectiveMousePos = mousePos ?? (
+    isMobile && activeTool === 'brush_erase'
+      ? { x: window.innerWidth / 2, y: window.innerHeight / 2 - 50 }
+      : null
+  );
+
   return (
     <div
       className={cn(
@@ -1315,18 +1324,41 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
           )}
 
           {/* Floating Brush Interaction Handles for Mobile — minimal icons anchored below cursor */}
-          {activeTool === 'brush_erase' && isMobile && mousePos && (
+          {activeTool === 'brush_erase' && isMobile && effectiveMousePos && (
             <div
               ref={controlsPanelRef}
               className="fixed z-[250] flex gap-3"
               style={{
-                left: mousePos.x,
-                top: mousePos.y + (brushSize * zoom / 2) + 12,
+                left: effectiveMousePos.x,
+                top: effectiveMousePos.y + (brushSize * zoom / 2) + 12,
                 transform: 'translateX(-50%)',
                 pointerEvents: 'auto',
               }}
               onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                const touch = e.touches[0];
+                handleStartRef.current = { x: touch.clientX, y: touch.clientY };
+                initialPosRef.current = effectiveMousePos;
+              }}
+              onTouchMove={(e) => {
+                e.stopPropagation();
+                const touch = e.touches[0];
+                const dx = touch.clientX - handleStartRef.current.x;
+                const dy = touch.clientY - handleStartRef.current.y;
+                const newPos = {
+                  x: initialPosRef.current.x + dx,
+                  y: initialPosRef.current.y + dy
+                };
+                setMousePos(newPos);
+                // Track canvas position so panning preserves location
+                brushCanvasPosRef.current = getClampedCoords(newPos.x, newPos.y);
+                // Update controls panel position imperatively (no React lag)
+                if (controlsPanelRef.current) {
+                  controlsPanelRef.current.style.left = `${newPos.x}px`;
+                  controlsPanelRef.current.style.top = `${newPos.y + brushSizeForControls.current * zoomForControls.current / 2 + 12}px`;
+                }
+              }}
             >
               {/* Move/Position Handle */}
               <div
@@ -1428,12 +1460,12 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
             </div>
           )}
 
-          {activeTool === 'brush_erase' && mousePos && (
+          {activeTool === 'brush_erase' && effectiveMousePos && (
             <div
               className="fixed pointer-events-none border border-white/50 bg-white/20 rounded-full z-[100] shadow-[0_0_0_1px_rgba(0,0,0,0.3)]"
               style={{
-                left: mousePos.x,
-                top: mousePos.y,
+                left: effectiveMousePos.x,
+                top: effectiveMousePos.y,
                 width: brushSize * zoom,
                 height: brushSize * zoom,
                 transform: 'translate(-50%, -50%)',

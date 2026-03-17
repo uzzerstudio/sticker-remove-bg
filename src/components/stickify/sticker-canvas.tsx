@@ -232,6 +232,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   // Precision Brush Refs
   const handleStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const initialPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Stores brush position in CANVAS coordinates so panning doesn't lose it
+  const brushCanvasPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Helper to get clamped canvas coordinates from screen coordinates
   const getClampedCoords = useCallback((clientX: number, clientY: number) => {
@@ -247,6 +249,17 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     return {
       x: Math.max(0, Math.min(canvas.width, x)),
       y: Math.max(0, Math.min(canvas.height, y))
+    };
+  }, []);
+
+  // Convert canvas pixel coordinates back to screen (viewport) coordinates
+  const canvasToScreen = useCallback((cx: number, cy: number) => {
+    if (!canvasRef.current) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const rect = canvasRef.current.getBoundingClientRect();
+    const canvas = canvasRef.current;
+    return {
+      x: rect.left + (cx / canvas.width) * rect.width,
+      y: rect.top + (cy / canvas.height) * rect.height,
     };
   }, []);
 
@@ -370,9 +383,32 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   // Initialize mousePos to center on mobile when brush tool is active
   useEffect(() => {
     if (activeTool === 'brush_erase' && isMobile && !mousePos) {
-      setMousePos({ x: window.innerWidth / 2, y: (window.innerHeight / 2) - 50 });
+      const initX = window.innerWidth / 2;
+      const initY = (window.innerHeight / 2) - 50;
+      setMousePos({ x: initX, y: initY });
+      // Also init canvas position
+      const coords = getClampedCoords(initX, initY);
+      brushCanvasPosRef.current = coords;
     }
-  }, [activeTool, isMobile, mousePos]);
+  }, [activeTool, isMobile, mousePos, getClampedCoords]);
+
+  // When user scrolls the canvas, update mousePos from the stored canvas-space position
+  // so the brush mira stays at the same canvas location after panning
+  useEffect(() => {
+    if (!isMobile || activeTool !== 'brush_erase') return;
+    const scrollContainer = containerRef.current?.parentElement;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      if (brushCanvasPosRef.current) {
+        const sp = canvasToScreen(brushCanvasPosRef.current.x, brushCanvasPosRef.current.y);
+        setMousePos(sp);
+      }
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+  }, [isMobile, activeTool, canvasToScreen]);
 
   // Handle Margin Dragging
   useEffect(() => {
@@ -1269,10 +1305,16 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
             </div>
           )}
 
-          {/* Floating Brush Interaction Handles for Mobile (Joystick Style) */}
-          {activeTool === 'brush_erase' && isMobile && (
+          {/* Floating Brush Interaction Handles for Mobile — anchored below brush cursor */}
+          {activeTool === 'brush_erase' && isMobile && mousePos && (
             <div
-              className="fixed bottom-32 left-1/2 -translate-x-1/2 z-[250] flex gap-4 bg-background/90 backdrop-blur-md p-3 rounded-2xl shadow-2xl border border-border animate-in fade-in slide-in-from-bottom-4 duration-500"
+              className="fixed z-[250] flex gap-4 bg-background/90 backdrop-blur-md p-3 rounded-2xl shadow-2xl border border-border animate-in fade-in duration-300"
+              style={{
+                left: mousePos.x,
+                top: mousePos.y + (brushSize * zoom / 2) + 20,
+                transform: 'translateX(-50%)',
+                pointerEvents: 'auto',
+              }}
               onMouseDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
             >
@@ -1295,6 +1337,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                     y: initialPosRef.current.y + dy
                   };
                   setMousePos(newPos);
+                  // Track canvas position so panning preserves location
+                  brushCanvasPosRef.current = getClampedCoords(newPos.x, newPos.y);
                 }}
               >
                 <Move className="w-8 h-8 text-foreground" />
@@ -1325,6 +1369,8 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                     y: initialPosRef.current.y + dy
                   };
                   setMousePos(newPos);
+                  // Track canvas position
+                  brushCanvasPosRef.current = getClampedCoords(newPos.x, newPos.y);
                   // Erase at new Mira pos
                   continueBrushStroke(newPos.x, newPos.y);
                 }}

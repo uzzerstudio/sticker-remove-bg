@@ -5,7 +5,7 @@ import { useStickerStore } from './sticker-store';
 import { useLanguage } from '@/components/language-provider';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Move, Eraser } from 'lucide-react';
 
 interface StickerCanvasProps {
   className?: string;
@@ -229,6 +229,27 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
   const dragSourceRef = useRef<'mouse' | 'touch' | null>(null);
   const lastTouchTimeRef = useRef(0);
 
+  // Precision Brush Refs
+  const handleStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const initialPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Helper to get clamped canvas coordinates from screen coordinates
+  const getClampedCoords = useCallback((clientX: number, clientY: number) => {
+    if (!canvasRef.current) return { x: 0, y: 0 };
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const x = Math.round((clientX - rect.left) * scaleX);
+    const y = Math.round((clientY - rect.top) * scaleY);
+
+    return {
+      x: Math.max(0, Math.min(canvas.width, x)),
+      y: Math.max(0, Math.min(canvas.height, y))
+    };
+  }, []);
+
   // Replaces the middle-click block with a global context menu block when panning
   useEffect(() => {
     const handleContextMenuCapture = (e: MouseEvent) => {
@@ -289,6 +310,69 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, undoErase, redoErase, undoImage, redoImage, activeTool, zoom, setZoom, outlineWidth, setOutlineWidth, setActiveTool]);
+
+  // Shared Brush Stroke Logic
+  const startBrushStroke = useCallback((clientX: number, clientY: number) => {
+    const coords = getClampedCoords(clientX, clientY);
+    const img = imageRef.current;
+    if (!img) return;
+    const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
+
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = img.naturalWidth;
+    offCanvas.height = img.naturalHeight;
+    const bCtx = offCanvas.getContext('2d')!;
+    if (transparencyImg) bCtx.drawImage(transparencyImg, 0, 0);
+
+    const localX = (coords.x / dpr) - drawX + cropLeft;
+    const localY = (coords.y / dpr) - drawY + cropTop;
+
+    bCtx.lineJoin = 'round';
+    bCtx.lineCap = 'round';
+    bCtx.lineWidth = brushSize;
+    bCtx.strokeStyle = 'black';
+    bCtx.beginPath();
+    bCtx.moveTo(localX, localY);
+    bCtx.lineTo(localX, localY);
+    bCtx.stroke();
+
+    brushCanvasRef.current = offCanvas;
+    lastPosRef.current = coords;
+    setTransparencyMaskOnly(offCanvas.toDataURL());
+  }, [brushSize, getClampedCoords, transparencyImg, setTransparencyMaskOnly]);
+
+  const continueBrushStroke = useCallback((clientX: number, clientY: number) => {
+    if (!brushCanvasRef.current) return;
+    const coords = getClampedCoords(clientX, clientY);
+    const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
+    const bCtx = brushCanvasRef.current.getContext('2d')!;
+
+    bCtx.lineJoin = 'round';
+    bCtx.lineCap = 'round';
+    bCtx.lineWidth = brushSize;
+    bCtx.strokeStyle = 'black';
+
+    const last = lastPosRef.current || coords;
+    const lastLocalX = (last.x / dpr) - drawX + cropLeft;
+    const lastLocalY = (last.y / dpr) - drawY + cropTop;
+    const currentLocalX = (coords.x / dpr) - drawX + cropLeft;
+    const currentLocalY = (coords.y / dpr) - drawY + cropTop;
+
+    bCtx.beginPath();
+    bCtx.moveTo(lastLocalX, lastLocalY);
+    bCtx.lineTo(currentLocalX, currentLocalY);
+    bCtx.stroke();
+
+    lastPosRef.current = coords;
+    setTransparencyMaskOnly(brushCanvasRef.current.toDataURL());
+  }, [brushSize, getClampedCoords, setTransparencyMaskOnly]);
+
+  // Initialize mousePos to center on mobile when brush tool is active
+  useEffect(() => {
+    if (activeTool === 'brush_erase' && isMobile && !mousePos) {
+      setMousePos({ x: window.innerWidth / 2, y: (window.innerHeight / 2) - 50 });
+    }
+  }, [activeTool, isMobile, mousePos]);
 
   // Handle Margin Dragging
   useEffect(() => {
@@ -556,23 +640,6 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     }
   }, [triggerFitCounter, fitToScreen]);
 
-  // Helper to get clamped canvas coordinates from screen coordinates
-  const getClampedCoords = useCallback((clientX: number, clientY: number) => {
-    if (!canvasRef.current) return { x: 0, y: 0 };
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const x = Math.round((clientX - rect.left) * scaleX);
-    const y = Math.round((clientY - rect.top) * scaleY);
-
-    return {
-      x: Math.max(0, Math.min(canvas.width, x)),
-      y: Math.max(0, Math.min(canvas.height, y))
-    };
-  }, []);
-
   // Zoom on Ctrl+MouseWheel
   useEffect(() => {
     const container = containerRef.current;
@@ -795,32 +862,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
     setMousePos({ x: clientX, y: clientY });
 
     if (activeTool === 'brush_erase') {
-      const img = imageRef.current;
-      if (!img) return;
-      const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
-
-      const offCanvas = document.createElement('canvas');
-      offCanvas.width = img.naturalWidth;
-      offCanvas.height = img.naturalHeight;
-      const bCtx = offCanvas.getContext('2d')!;
-      if (transparencyImg) {
-        bCtx.drawImage(transparencyImg, 0, 0);
-      }
-
-      const localX = (coords.x / dpr) - drawX + cropLeft;
-      const localY = (coords.y / dpr) - drawY + cropTop;
-
-      bCtx.lineJoin = 'round';
-      bCtx.lineCap = 'round';
-      bCtx.lineWidth = brushSize;
-      bCtx.strokeStyle = 'black';
-      bCtx.beginPath();
-      bCtx.moveTo(localX, localY);
-      bCtx.lineTo(localX, localY);
-      bCtx.stroke();
-
-      brushCanvasRef.current = offCanvas;
-      setTransparencyMask(offCanvas.toDataURL());
+      startBrushStroke(clientX, clientY);
     }
     // Prevent scrolling and synthetic mouse events
     e.preventDefault();
@@ -872,26 +914,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
         setMousePos({ x: clientX, y: clientY });
 
         if (activeTool === 'brush_erase' && brushCanvasRef.current) {
-          const { drawX, drawY, cropLeft, cropTop, dpr } = renderParamsRef.current;
-          const bCtx = brushCanvasRef.current.getContext('2d')!;
-          bCtx.lineJoin = 'round';
-          bCtx.lineCap = 'round';
-          bCtx.lineWidth = brushSize;
-          bCtx.strokeStyle = 'black';
-
-          const last = lastPosRef.current || coords;
-          const lastLocalX = (last.x / dpr) - drawX + cropLeft;
-          const lastLocalY = (last.y / dpr) - drawY + cropTop;
-          const currentLocalX = (coords.x / dpr) - drawX + cropLeft;
-          const currentLocalY = (coords.y / dpr) - drawY + cropTop;
-
-          bCtx.beginPath();
-          bCtx.moveTo(lastLocalX, lastLocalY);
-          bCtx.lineTo(currentLocalX, currentLocalY);
-          bCtx.stroke();
-
-          lastPosRef.current = coords;
-          setTransparencyMaskOnly(brushCanvasRef.current.toDataURL());
+          continueBrushStroke(clientX, clientY);
         }
       }
     };
@@ -1242,6 +1265,74 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                   <RotateCcw className="w-5 h-5 scale-x-[-1]" />
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Floating Brush Interaction Handles for Mobile (Joystick Style) */}
+          {activeTool === 'brush_erase' && isMobile && (
+            <div
+              className="fixed bottom-32 left-1/2 -translate-x-1/2 z-[250] flex gap-4 bg-background/90 backdrop-blur-md p-3 rounded-2xl shadow-2xl border border-border animate-in fade-in slide-in-from-bottom-4 duration-500"
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              {/* Move/Position Handle */}
+              <div
+                className="w-16 h-16 bg-secondary flex items-center justify-center rounded-2xl active:scale-90 transition-all touch-none shadow-sm border border-border/50"
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  const touch = e.touches[0];
+                  handleStartRef.current = { x: touch.clientX, y: touch.clientY };
+                  initialPosRef.current = mousePos || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+                }}
+                onTouchMove={(e) => {
+                  e.stopPropagation();
+                  const touch = e.touches[0];
+                  const dx = touch.clientX - handleStartRef.current.x;
+                  const dy = touch.clientY - handleStartRef.current.y;
+                  const newPos = {
+                    x: initialPosRef.current.x + dx,
+                    y: initialPosRef.current.y + dy
+                  };
+                  setMousePos(newPos);
+                }}
+              >
+                <Move className="w-8 h-8 text-foreground" />
+              </div>
+
+              {/* Erase Handle */}
+              <div
+                className="w-16 h-16 bg-pink-500 flex items-center justify-center rounded-2xl active:scale-90 transition-all touch-none shadow-lg shadow-pink-500/20"
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  const touch = e.touches[0];
+                  handleStartRef.current = { x: touch.clientX, y: touch.clientY };
+                  initialPosRef.current = mousePos || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+                  // Start drawing at current Mira pos
+                  startBrushStroke(initialPosRef.current.x, initialPosRef.current.y);
+                }}
+                onTouchMove={(e) => {
+                  e.stopPropagation();
+                  const touch = e.touches[0];
+                  const dx = touch.clientX - handleStartRef.current.x;
+                  const dy = touch.clientY - handleStartRef.current.y;
+                  const newPos = {
+                    x: initialPosRef.current.x + dx,
+                    y: initialPosRef.current.y + dy
+                  };
+                  setMousePos(newPos);
+                  // Erase at new Mira pos
+                  continueBrushStroke(newPos.x, newPos.y);
+                }}
+                onTouchEnd={(e) => {
+                  e.stopPropagation();
+                  // Commit history
+                  commitTransparencyHistory();
+                  toast({ title: "Borrado completado" });
+                }}
+              >
+                <Eraser className="w-8 h-8 text-white" />
+              </div>
             </div>
           )}
 

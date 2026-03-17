@@ -1335,30 +1335,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                 pointerEvents: 'auto',
               }}
               onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                const touch = e.touches[0];
-                handleStartRef.current = { x: touch.clientX, y: touch.clientY };
-                initialPosRef.current = effectiveMousePos;
-              }}
-              onTouchMove={(e) => {
-                e.stopPropagation();
-                const touch = e.touches[0];
-                const dx = touch.clientX - handleStartRef.current.x;
-                const dy = touch.clientY - handleStartRef.current.y;
-                const newPos = {
-                  x: initialPosRef.current.x + dx,
-                  y: initialPosRef.current.y + dy
-                };
-                setMousePos(newPos);
-                // Track canvas position so panning preserves location
-                brushCanvasPosRef.current = getClampedCoords(newPos.x, newPos.y);
-                // Update controls panel position imperatively (no React lag)
-                if (controlsPanelRef.current) {
-                  controlsPanelRef.current.style.left = `${newPos.x}px`;
-                  controlsPanelRef.current.style.top = `${newPos.y + brushSizeForControls.current * zoomForControls.current / 2 + 12}px`;
-                }
-              }}
+              onTouchStart={(e) => e.stopPropagation()}
             >
               {/* Move/Position Handle */}
               <div
@@ -1367,7 +1344,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                   e.stopPropagation();
                   const touch = e.touches[0];
                   handleStartRef.current = { x: touch.clientX, y: touch.clientY };
-                  initialPosRef.current = mousePos || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+                  initialPosRef.current = effectiveMousePos;
                 }}
                 onTouchMove={(e) => {
                   e.stopPropagation();
@@ -1400,7 +1377,7 @@ export function StickerCanvas({ className }: StickerCanvasProps) {
                   e.preventDefault();
                   const touch = e.touches[0];
                   handleStartRef.current = { x: touch.clientX, y: touch.clientY };
-                  initialPosRef.current = mousePos || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+                  initialPosRef.current = effectiveMousePos;
                   startBrushStroke(initialPosRef.current.x, initialPosRef.current.y);
                 }}
                 onTouchMove={(e) => {
